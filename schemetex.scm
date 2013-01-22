@@ -30,6 +30,13 @@
 ;;   ... a
 ;;     will match any number of tokens and bind them to a
 ;;     will remove a from the output rule if no tokens match
+;;   ...)
+;;     when ellipsis are at the end of a pattern they consume
+;;      the rest of the input and discard it
+;;   ..@n ("mo" "mi") a 
+;;     will match any number of tokens and bind them to a
+;;     will remove a from the output rule if no tokens match
+;;     tokens cannot be members of the given list
 ;;   a @ ("msup" "msub")
 ;;   a @n ("msup" "msub")
 ;;     (if () is present in the list a will be removed from the output rule, n for nullable?)
@@ -43,7 +50,7 @@
 ;;   a ?b f
 ;;   a ?bn f
 ;;     f must be a function (f :: (binding) -> bool)
-;;     in the n b version f must be a function (f :: (binding,bindings) -> bool)
+;;     in the b version f must be a function (f :: (binding,bindings) -> bool)
 ;;       it is passed both the bindings and the potential binding
 ;;     a will be bound if bool is true, f may be nondeterministic
 ;;     n for nullable?
@@ -127,6 +134,12 @@
              (list (cdr pattern)
                    (second split)
                    bindings))))
+       ((equal? '..@ (car pattern))
+        (let ((split (a-split-of tree)))
+         (unless (null? (intersection (car split) (second pattern))) (fail))
+         (list (cdddr pattern)
+               (second split)
+               (tree-pattern:insert-or-fail (third pattern) (car split) #t bindings))))
        ((and (symbol? (car pattern)) (tree-pattern:present? (car pattern) bindings))
         (when (null? tree) (fail))
         (tree-pattern:match-or-fail (car pattern) (car tree) bindings)
@@ -276,14 +289,20 @@
 ;;; need environments
 ;;; simplest version just binds variables
 
-
 ;; Broken:
 
 ;; (define *sxml* (tex:string->mathml #@"$x(y+2,x)$"))
 ;; (pp (mathml->pre-expression *sxml*))
+;; In general there are issues with multiple arguments
 
 ;; (define *sxml* (tex:string->mathml #@"$x(y+2)$"))
 ;; (pp (mathml->pre-expression *sxml*))
+;; So there's a question, is X a function or is this multiplication?
+
+;; x(y) vs x(y,z)
+;; maybe I need a r-*f for these cases and let it resolve at runtime
+;; So I need to distinguish
+;; xy, x*y vs x(y)
 
 ;; TODO  These are broken
 ;; (define *sxml* (tex:string->mathml #@"$\sum_{x=1}^{100} z_{x,y}$"))
@@ -374,27 +393,6 @@
             (/ (sqr (- x mu))
                (* 2 Sigma))))))
 
-(when #f
- (define (latex-string->scheme latex-string)
-  (latex->scheme (parse-latex latex-string)))
- (define (tex string) (latex-string->scheme latex-string))
- (define *tex:stats* (tex:environment
-                 ((^ 'e x) (exp x))
-                 ((^ a b) (expt a b))
-                 ((a b) (* a b))
-                 ((/ a b) (/ a b))
-                 ((- a b) (+ a b))
-                 ((sqrt a) (sqrt a))
-                 ('pi pi)
-                 ((\| a \|) (abs a))
-                 ('Sigma (exp x))           ;??
-                 ))
- (let-tex-lambda (x)         ;; inputs
-                 '()         ;; custom bindings
-                 *tex:stats* ;; scope
-                 $$))
-
-;;(define *tex:string-mathmode-regexp* "^\s*\\$\(.*\)\s*\\$ *$")
 (define *tex:string-mathmode-regexp* "^\\s*\\$(.*)\\s*\\$ *$")
 (define (tex:string-mathmode? s) (irregex-match *tex:string-mathmode-regexp* s))
 
@@ -418,30 +416,6 @@
        ((list? doc) (removeq #f (map (lambda (doc) (sxml:map f tag doc)) doc)))
        (else doc)))
 
-;; converts:
-;; ("mo" "(")
-;; ("mn" "2")
-;; ("mi" "pi")
-;; ("msup" ("mo" ")") ("mi" "d"))
-;; to
-;; ("msup" ("mrow"
-;;          ("mo" "(")
-;;          ("mn" "2")
-;;          ("mi" "pi")
-;;          ("mo" ")")) ("mi" "d"))
-
-;; (mathml-sxml:bracket-and-pivot '(("|" . "|") ("(" . ")") ("[" . "]") ("{" . "}")) '("msup" "msub") doc)
-;; (define (mathml-sxml:bracket-and-pivot pivots ops doc)
-;;  (define (mo? m doc) (and (equal? (first doc) "mo") (equal? (second doc) m)))
-;;  (cond ((not (list? doc)) doc)
-;;        ((> (length doc) 1)
-;;         (cons (car doc
-;;                    (let ((subdoc (cdr doc)))
-;;                     (let loop ((idx 1) (out '()) (brackets '()))
-;;                      (if (>= idx (length subdoc))
-;;                          out
-;;                          (cond ((a-mo? (map car pivots) subdoc)))))))))))
-
 (define (tex:string->mathml s)
  (define (lines string) (irregex-split "\n" string))
  (define (system-output command)
@@ -464,61 +438,6 @@
 (define (univariate-gaussian x mu sigma)
  (define (sqr x) (* x x))
  (* (/ (* (sqrt (* 2 pi)) sigma)) (exp (- (/ (sqr (- x mu)) (* 2 (sqr sigma)))))))
-
-(define *sxml1*
- '("mrow"
-   ("mo" "(")
-   ("mfrac"
-    ("mn" "1")
-    ("msqrt"
-     ("mo" "(")
-     ("mn" "2")
-     ("mi" "pi")
-     ("msup" ("mo" ")") ("mi" "d"))
-     ("mo" "|")
-     ("mi" "Sigma")
-     ("msup"
-      ("mo" "|")
-      ("mfrac"
-       ("mn" "1")
-       ("mn" "2")))))
-   ("msup"
-    ("mi" "e")
-    ("mrow"
-     ("mo" "-")
-     ("mfrac" ("mn" "1") ("mn" "2"))
-     ("mo" "(")
-     ("mi" "x")
-     ("mo" "-")
-     ("mi" "mu")
-     ("msup" ("mo" ")") ("mo" "prime"))
-     ("msup"
-      ("mi" "Sigma")
-      ("mrow" ("mo" "-") ("mn" "1")))
-     ("mo" "(")
-     ("mi" "x")
-     ("mo" "-")
-     ("mi" "mu")
-     ("mo" ")")))
-   ("mo" ")")))
-
-(define *sxml2*
- '("mfrac"
-   ("mn" "1")
-   ("msqrt"
-    ("mo" "(")
-    ("mn" "2")
-    ("mi" "pi")
-    ("msup"
-     ("mo" ")")
-     ("mi" "d"))
-    ("mo" "|")
-    ("mi" "Sigma")
-    ("msup"
-     ("mo" "|")
-     ("mfrac"
-      ("mstyle" ("mn" "1"))
-      ("mstyle" ("mn" "2")))))))
 
 (define (number-brackets open-bracket close-bracket tree)
  (let ((id 0) (open '()))
@@ -757,32 +676,34 @@
     (pre (s1 ! ,(o string->symbol string-upcase)
              ("mrow" in))))))
 
+;; TODO This is disgusting need some looping construct
 (define r:call
- `(((... pre ("mi" f) ("(" a) ... post)
+ `(((... pre ("mi" f) ("(" ..@ (("mo" ",")) a) ... post)
     (pre ("call" ("mi" f) a) post))
-   ((... pre ("mi" f) ("(" a ("mo" ",") b) ... post)
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b) ... post)
     (pre ("call" ("mi" f) a b) post))
-   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c) ... post)
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c) ... post)
     (pre ("call" ("mi" f) a b c) post))
-   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d) ... post)
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d) ... post)
     (pre ("call" ("mi" f) a b c d) post))
-   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e) ... post)
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e) ... post)
     (pre ("call" ("mi" f) a b c d e) post))
-   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e ("mo" ",") j) ... post)
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e ("mo" ",") ..@ (("mo" ",")) j) ... post)
     (pre ("call" ("mi" f) a b c d e j) post))))
 
+;; TODO This is disgusting need some looping construct
 (define r:call-sup
- `(((... pre ("mi" f) ("msup" ("(" a) s) ... post)
+ `(((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a) s) ... post)
     (pre ("msup" ("call" ("mi" f) a) s) post))
-   ((... pre ("mi" f) ("msup" ("(" a ("mo" ",") b) s) ... post)
+   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b) s) ... post)
     (pre ("msup" ("call" ("mi" f) a b) s) post))
-   ((... pre ("mi" f) ("msup" ("(" a ("mo" ",") b ("mo" ",") c) s) ... post)
+   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c) s) ... post)
     (pre ("msup" ("call" ("mi" f) a b c) s) post))
-   ((... pre ("mi" f) ("msup" ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d) s) ... post)
+   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d) s) ... post)
     (pre ("msup" ("call" ("mi" f) a b c d) s) post))
-   ((... pre ("mi" f) ("msup" ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e) s) ... post)
+   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e) s) ... post)
     (pre ("msup" ("call" ("mi" f) a b c d e) s) post))
-   ((... pre ("mi" f) ("msup" ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e ("mo" ",") j) s) ... post)
+   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e ("mo" ",") ..@ (("mo" ",")) j) s) ... post)
     (pre ("msup" ("call" ("mi" f) a b c d e j) s) post))))
 
 (define r:call=
@@ -914,7 +835,8 @@
        ,r:numbers
        ,r:single-mrow/bracket
        ,r:stability
-       ,r:calls))
+       ,r:calls
+       ))
     (tree (match-replace-staging 
            before
            (number-all-brackets (match-replace-staging  
@@ -926,8 +848,9 @@
        (pre1-expression-variables (cddr (second tree)))
        (pre-expression-bind-local
         (match-replace-staging after (cons "(" (cddr tree))) '()))
-      (make-pre-expression (gensym "tex:") '() (pre-expression-bind-local
-                                                (match-replace-staging after tree) '())))))
+      (make-pre-expression (gensym "tex:") '() 
+                           (pre-expression-bind-local
+                            (match-replace-staging after tree) '())))))
 
 (define (ast-variables pre-expression)
  (map second
@@ -989,14 +912,16 @@
 (define (product-l l f) (qmap-reduce * 1 f l))
 (define (sum-v v f) (qmap-reduce-vector + 0 f v))
 (define (product-v v f) (qmap-reduce-vector * 1 f v))
+(define (sum-n n f) (sum f n))
+(define (product-n n f) (product f n))
 
 (define (v/k v k) (k*v (/ k) v))
 (define (cv/k cv k) (k*cv (/ k) cv))
 
 (define (m/ a b)
  (define (left-pseudo-inverse m)
-  (let ((inverse (invert-matrix (m* (transpose m) m))))
-   (if inverse (m* inverse (transpose m)) #f)))
+  (let ((inverse (invert-matrix (m* (transpose-matrix m) m))))
+   (if inverse (m* inverse (transpose-matrix m)) #f)))
  ;; FIXME Double check this
  (m* a (left-pseudo-inverse b)))
 (define (m-expt m n)
@@ -1006,17 +931,6 @@
        ((fixnum? n) (m-expt (m* m m) (- n 1)))
        (else (error "Can't raise matrix ~s to the power of ~s" m n))))
 (define (v-expt v i) (map-vector (lambda (e) (expt e i)) v))
-
-;; (define-macro op1
-;;  ;; Fixme, this should generate a lookup table
-;;  (lambda (form e)
-;;   (e `(define (,(string->symbol (string-append "R-" (symbol->string (second form)))) a)
-;;        (let ((r (assoc (list (compact-type a))
-;;                        ;; FIXME The use of eval here is a hack
-;;                        ',(map (lambda (a) (list (but-last a) (eval (last a)))) (cddr form)))))
-;;         (unless r (error "fuck-up"))
-;;         ((cadr r) a)))
-;;      e)))
 
 (define-syntax op1
  (er-macro-transformer
@@ -1028,17 +942,6 @@
                       ',(map (lambda (a) (list (reverse (cdr (reverse a))) (eval (last a)))) (cddr form)))))
        (unless r (error "fuck-up"))
        ((cadr r) ,%a)))))))
-
-;; (define-macro op2
-;;  ;; Fixme, this should generate a lookup table
-;;  (lambda (form e)
-;;   (e `(define (,(string->symbol (string-append "R-" (symbol->string (second form)))) a b)
-;;        (let ((r (assoc (list (compact-type a) (compact-type b))
-;;                        ;; FIXME The use of eval here is a hack
-;;                        ',(map (lambda (a) (list (but-last a) (eval (last a)))) (cddr form)))))
-;;         (unless r (error "fuck-up"))
-;;         ((cadr r) a b)))
-;;      e)))
 
 (define-syntax op2
  ;; Fixme, this should generate a lookup table
@@ -1054,7 +957,7 @@
 
 (op1 bar (n abs) (v magnitude) (m determinant))
 (op1 neg (n -) (v v-neg) (m m-neg))
-(op1 transpose (n identity) (v v-transpose) (m transpose))
+(op1 transpose (n identity) (v v-transpose) (m transpose-matrix))
 
 (op2 + (n n +) (v v v+) (cv cv cv+) (m m m+))
 (op2 - (n n -) (v v v-) (cv cv cv-) (m m m-))
@@ -1068,8 +971,8 @@
 (op2 expt (n n expt) (v n v-expt) (m n m-expt))
 (op2 ref (l n list-ref) (v n vector-ref) (cv n cv-vector-ref)
      (m n vector-ref) (m v v-matrix-ref))
-(op2 sum (l p sum-l) (v p sum-v))
-(op2 product (l p product-l) (v p product-v))
+(op2 sum (n p sum-n) (l p sum-l) (v p sum-v))
+(op2 product (n p product-n) (l p product-l) (v p product-v))
 (op2 = (n n =))
 (op2 > (n n >))
 (op2 < (n n <))
@@ -1187,7 +1090,42 @@
             (t a (s ("bracketed" b) d) c))
            (("mn" a ? ,string->number)
             (a ! ,string->number)))
-         (number-brackets "(" ")" *sxml1*))))
+         (number-brackets "(" ")"
+                          '("mrow"
+                            ("mo" "(")
+                            ("mfrac"
+                             ("mn" "1")
+                             ("msqrt"
+                              ("mo" "(")
+                              ("mn" "2")
+                              ("mi" "pi")
+                              ("msup" ("mo" ")") ("mi" "d"))
+                              ("mo" "|")
+                              ("mi" "Sigma")
+                              ("msup"
+                               ("mo" "|")
+                               ("mfrac"
+                                ("mn" "1")
+                                ("mn" "2")))))
+                            ("msup"
+                             ("mi" "e")
+                             ("mrow"
+                              ("mo" "-")
+                              ("mfrac" ("mn" "1") ("mn" "2"))
+                              ("mo" "(")
+                              ("mi" "x")
+                              ("mo" "-")
+                              ("mi" "mu")
+                              ("msup" ("mo" ")") ("mo" "prime"))
+                              ("msup"
+                               ("mi" "Sigma")
+                               ("mrow" ("mo" "-") ("mn" "1")))
+                              ("mo" "(")
+                              ("mi" "x")
+                              ("mo" "-")
+                              ("mi" "mu")
+                              ("mo" ")")))
+                            ("mo" ")"))))))
  (test-group
   "tex"
   (test "gaussian-pdf"
@@ -1206,293 +1144,4 @@
   (test "piecewise 0"  6 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 0))
   (test "piecewise 1" 7 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 1))
   (test "piecewise 2" 8 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 2))))
-
-;;; Work in progress
-
-(when #f
-
- ;; (trace r-ref r-+ r-- r-* r-/ r-expt r-bar r-neg r-transpose sqrt exp r-sum r-product)
-
- ;; (define *sxml* (tex:string->mathml #@"$\frac{1}{(2\pi)^\frac{d}{2}|\Sigma|^\frac{1}{2}}e^{-\frac{1}{2}(x-\mu)'\Sigma^{-1}(x-\mu)}$"))
-
- ;; (define *sxml* (tex:string->mathml #@"$\Sigma_x x$"))
- ;; (define *sxml* (tex:string->mathml #@"$\Sigma_{x=1}^{100} x$"))
- ;; (pp (mathml->pre-expression *sxml*))
-
- ;; variable subscript-superscript that is non-constant should reference into a multidimensional matrix
- ;; requires resolving referents
- ;;  will do with a propagation pass
- ;;  sounds like a framework for passing data along the tree would be useful
-
- ;; The goal, run the following with viterbi; even better, figure it out automatically
- ;; (define *sxml* (tex:string->mathml #@"$\max_{j_1,\ldots,j_T}\sum_{t=1}^T f(b^t_{j_t})+\sum_{t=2}^T g(b^{t-1}_{j_{t-1}},b^t_{j_t})$"))
- ;; (pp (mathml->pre-expression *sxml*))
-
- ;; I wonder if I can write a parser in a church-like language
- ;; I can express that the formula must be valid
- ;;  that types must match
-
- ;; maybe I should change all function calls into:
- ;; (call function args)
- ;; like that sqrt -> (call sqrt ("(" args)) and I no longer need this
- ;;  special part of the rule
- ;; juxtaposition becomes (call "*" args)
- ;; and by the end I will only have call nodes
-
- ;; (define *sxml* (tex:string->mathml #@"$xya-z$"))
- ;; (pp (mathml->pre-expression *sxml*))
-
- ;; (define *sxml* (tex:string->mathml #@"$f(x,y,a,z) = xya-z$"))
- ;; (pp (mathml->pre-expression *sxml*))
-
- ;; (define *sxml* (tex:string->mathml #@"$x-yz$"))
- ;; (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\Sigma_{x=1}^{100} x$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\Sigma_{x=1}^{100} y_x$"))
- (pp (mathml->pre-expression *sxml*))
-
-
- ;; TODO Codegen for calls
- (define *sxml* (tex:string->mathml #@"$f(x)y$"))
- (pp (mathml->pre-expression *sxml*))
-
- ;; TODO Codegen for sum/prod
- (define *sxml* (tex:string->mathml #@"$\sum_xx^2$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum_xx^2+\sum_yy^3$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum_x(x^2+y^3)$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum_x\{x^2+y^3\}$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum_xx^2+y^3$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum_xx^2\prod_yy^3$"))
- (pp (mathml->pre-expression *sxml*))
-
- ;; this is equal to sum(sum()) not sum*sum; this is wrong, should be sum*sum
- (define *sxml* (tex:string->mathml #@"$\sum_xx^2\sum_yy^3$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$(\sum_xx^2)(\sum_yy^3)$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$f(x,y)=x^2+y^2$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$f(x)^2+y^2$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$f(x,z)+y^2$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$f(x,z)^3+y^2$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$T(p)=\frac{T_0}{1-\frac{RT_0}{L}\log\frac{p}{p_{\text{sat}}(T_0)}}$"))
- (pp (mathml->pre-expression *sxml*))
-
- ;; Broken
-
- (define *sxml* (tex:string->mathml #@"$\sum_{x,y}x^2+y^3$"))
- (pp (mathml->pre-expression *sxml*))
-
- ;; org-preview-latex does not recognize this if multiline and not using $
- (tex:string->mathml #@"$\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$")
-
- (define *sxml* (tex:string->mathml #@"$\sum_{x}y_x$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum^100_{x}y_x$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$x_y$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$x>y$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$x=y$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sqrt[4]{x}$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$\sum^100_{x=10}y_x$"))
- (pp (mathml->pre-expression *sxml*))
-
-
- ;; need to think about this
- (define *sxml* (tex:string->mathml #@"$\log a \log b$"))
- (pp (mathml->pre-expression *sxml*))
-
- (define *sxml* (tex:string->mathml #@"$x=\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$"))
- (pp (mathml->pre-expression *sxml*))
-
-
- ;; > (pp (tex:string->mathml #@"$x=\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$"))
- ;; ("mrow"
- ;;  ("mi" "x")
- ;;  ("mo" "=")
- ;;  ("mrow"
- ;;   ("mo" "{")
- ;;   ("mrow"
- ;;    ("mstyle"
- ;;     ("mtable"
- ;;      ("mtr" ("mtd" ("mi" "k")) ("mtd" ("mn" "3")))
- ;;      ("mtr" ("mtd" ("mi" "n")) ("mtd" ("mn" "2")))
- ;;      ("mtr" ("mtd" ("mi" "k") ("mo" "-") ("mn" "1")) ("mtd" ("mn" "1"))))))))#T
-
- ;; Two kinds of summations, maps and ranged
- ;; variable subscripts are list or vector accesses, or function calls
-
- ;; f(x,y) = x^2+y^2
- ;; recognize function calls and if there is one on the left with an equals it's a function definition
-
- ;; reorganize and make all function calls into "call" syntax
-
- ;; more predictable argument order
-
- ;; TODO
- ;; piecewise functions, need logical operators first (eq, lt, gt, leq, etc)
- ;;                      and set operators, like \in, \cup, etc
- ;;                      list comprehensions (x \to y, dots)
- ;; elimination of spaces
- ;; broken | with P(x|y)|x|, bad numbering
- ;; implement testp
- ;; parsing/operator environments
- ;; bug in pattern matches with no variables
- ;; some more common notation:
- ;;  x', x_1, \hat{x}, \hbar{x}, \mathbb{x}, \Sigma_^, \min, \max, \Product^_
- ;;  combinations, stirling numbers, !, comparison ops
- ;;  sign
- ;;  trig ops
- ;; some way to define matrices
- ;;  det, tr
- ;; log, ln
- ;; sets: intersection, union
- ;; stats: var, E, Pr/p, arithmetic on random variables
- ;; let statements to bind named variables so they don't depend on order
- ;; integral with MC, derivative with AD
- ;; RK for ODEs
- ;; x' is either transpose or new op
- ;; replace ! by prefixing everything with an @ sign
- ;; FIXME Nested |'s are broken
- ;; recursive functions
- ;; custom declare math operator
-
- (define *sxml* (tex:string->mathml #@"$T(j,i,tau)=tau_{j,t}$"))
- (pp (mathml->pre-expression *sxml*))
-
- (pp (mathml->pre-expression (tex:string->mathml #@"$\sum_{i=1}^n\sum_{j=1}^2T_{j,i}[\log \tau_j - \frac{1}{2}\log|\Sigma_j|-\frac{1}{2}(x_i-\mu_j)'\Sigma_j^{-1}(x_i-\mu_j)-\frac{d}{2}\log 2\pi]$")))
-
- ;; #(PRE-EXPRESSION
- ;;   \s\l\i\b:G23
- ;;   ()
- ;;   (R-SUM
- ;;    (RANGE 1 ("mi" "n"))
- ;;    (LAMBDA
- ;;     (I)
- ;;     (R-SUM
- ;;      (RANGE 1 2)
- ;;      (LAMBDA
- ;;       (J)
- ;;       (R-*
- ;;        (R-REF (R-REF ("mi" "T") J) I)
- ;;        (R--
- ;;         (R--
- ;;          (R--
- ;;           (LOG (R-REF ("mi" "tau") J))
- ;;           (R-/ (LOG (R-BAR (R-REF ("mi" "Sigma") J))) 2))
- ;;          (R-*
- ;;           (R-*
- ;;            (R-/
- ;;             (R-TRANSPOSE
- ;;              (R-- (R-REF ("mi" "x") I) (R-REF ("mi" "mu") J)))
- ;;             2)
- ;;            (R-EXPT (R-REF ("mi" "Sigma") J) (R-NEG 1)))
- ;;           (R-- (R-REF ("mi" "x") I) (R-REF ("mi" "mu") J))))
- ;;         (R-* (R-/ ("mi" "d") 2) (LOG (R-* 2 3.141592653589793))))))))))#T
-
- )
-
-;; Works:
-(when #f
- ;; (define q (tex #@"$\sum_{i=1}^n\sum_cT_{c,i}[\log \tau_c - \frac{1}{2}\log|\Sigma_c|-\frac{1}{2}(x_i-\mu_c)'\Sigma_c^{-1}(x_i-\mu_c)-\frac{d}{2}\log 2\pi]$"))
-
- ;; (\x \m\u \s\i\g\m\a)
- (define (gaussian-pdf x mu sigma)
-  ((tex-hash #@"$\frac{1}{\sigma\sqrt{2\pi}}e^{-\frac{(x-\mu)^2}{2\sigma^2}}$") x mu sigma))
- ;; (\t\a\u \j \f \x \i \m\u S\i\g\m\a \c)
- (define (em:tji tau j f x i mu sigma c)
-  ((tex-hash #@"$\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_{c=0}^c\tau_cf(x_i,\mu_c,\Sigma_c)}$") tau j f x i mu sigma c))
- ;; (\n T \j \c)
- (define (em:tau-j n t j c) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{j,i}}{\sum_{i=0}^n(\sum_{c=0}^cT_{c,i})}$") n t j c))
- ;; (\n T \c \x)
- (define (em:mu-c n t c x) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{c,i}x_i}{\sum_{i=0}^n T_{c,i}}$") n t c x))
- ;; (\n T \c \x \m\u)
- (define (em:sigma-c n t c x mu) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{c,i}(x_i-\mu_c)(x_i-\mu_c)'}{\sum_{i=0}^n T_{c,i}}$") n t c x mu))
-
-
- (define (em-gmm nr-classes data nr-iterations)
-  (let loop  ((t (transpose-list-of-lists
-                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
-              (means #f) (variances #f) (tau #f)
-              (iter 0))
-   (pp (list t means variances tau))(newline)
-   (if (= iter nr-iterations)
-       (list means variances tau)
-       (let ((tau (map-n (lambda (j) (em:tau-j (- (length data) 1) t j (- nr-classes 1))) nr-classes))
-             (means (map-n (lambda (c) (em:mu-c (- (length data) 1) t c data)) nr-classes))
-             (variances (map-n (lambda (c) (em:sigma-c (- (length data) 1) t c data mu-1)) nr-classes))
-             (t (map-n-matrix
-                 (lambda (j i) (em:tji tau-1 j gaussian-pdf data i mu-1 sigma-1 (- nr-classes 1)))
-                 nr-classes (length data))))
-        (loop t means variances tau (+ iter 1))))))
-
- (em-gmm 2 '(1 2 3 4 5  100 110 102 103 104 105) 5)
- )
-
-;; wanted
-(when #f
- (define (em-gmm nr-classes data nr-iterations)
-  (let loop  ((t (transpose-list-of-lists
-                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
-              (means #f) (variances #f) (tau #f)
-              (iter 0))
-   (pp (list t means variances tau))(newline)
-   (if (= iter nr-iterations)
-       (list means variances tau)
-       (let* ((tau (#@"$\tau_j=\frac{\sum_{i=1}^n T_{j,i}}{\sum_{i=1}^n(\sum_c T_{c,i})}$" :n (length data) :t t :j nr-classes :c nr-classes))
-              (means (#@"$\mu_j=\frac{\sum_{i=1}^n T_{j,i}x_i}{\sum_{i=1}^n T_{j,i}}$" :t t :j nr-classes :x data))
-              (variances (#@"$\Sigma_j=\frac{\sum_{i=1}^n T_{j,i}(x_i-\mu_j)(x_i-\mu_j)'}{\sum_{i=1}^n T_{j,i}}$" :n (length data) :t t :c nr-classes :x data :mu means))
-              (t (#@"$T_{j,i}=\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_c\tau_cf(x_i,\mu_c,\Sigma_c)}$" :tau tau :mu means :sigma variances :f gaussian-pdf :x data :i (length data) :j nr-classes :c nr-classes)))
-        (loop t means variances tau (+ iter 1)))))))
-
-;; Even better
-;;  will need a *tex-handler* in the reader
-(when #f
- (define (em-gmm nr-classes data nr-iterations)
-  (let loop  ((t (transpose-list-of-lists
-                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
-              (means #f) (variances #f) (tau #f)
-              (iter 0))
-   (if (= iter nr-iterations)
-       (list means variances tau)
-       (let-tex* ((n (length data)) (j nr-classes) (c nr-classes) 
-                  (x data) (length data) 
-                  (f (lambda-tex (x mu sigma) #@"$\frac{1}{\sigma\sqrt{2\pi}}e^{-\frac{(x-\mu)^2}{2\sigma^2}}$"))
-                  #@"$\tau_j=\frac{1}{n}\sum_{i=1}^nT_{j,i}$"
-                  #@"$\mu_j=\frac{\sum_{i=1}^n T_{j,i}x_i}{\sum_{i=1}^n T_{j,i}}$"
-                  #@"$\Sigma_j=\frac{\sum_{i=1}^n T_{j,i}(x_i-\mu_j)(x_i-\mu_j)'}{\sum_{i=1}^n T_{j,i}}$"
-                  #@"$T_{j,i}=\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_c\tau_cf(x_i,\mu_c,\Sigma_c)}$")
-                 (loop t means variances tau (+ iter 1)))))))
 )

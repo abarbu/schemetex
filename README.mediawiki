@@ -1,19 +1,41 @@
 = schemetex =
 
 This is early work in progress. It allows you to write inline TeX
-equations which get compiled to Scheme functions.
+equations which get compiled to Scheme functions. Try out emacs and
+org-preview-latex if you're going to use this module, it renders the
+TeX inside your buffer making is especially easy to read.
+
+:(tex #@"$TeX$")
+:(tex-hash #@"$TeX$")
+
+This is the basic interface, it currently performs the conversion at
+runtime, although there's no reason why this couldn't be done at
+compile time. You're better off using tex-hash as the conversion can
+be expensive for more complex expressions. This module defines a
+reader macro #@"$...$". This is because charactere escaping is
+performed differently in TeX than in scheme. Dollar signs are present
+to allow 'org-preview-latex' to find and render the inline LaTeX.
+
+:(tex #@"$\sum_x\{x^2+y^3\}$")
+
+Will for example return a function that takes two arguments, 'x' and
+'y',
+
+:(tex->lambda #@"TeX")
+
+This will return the code produced for a particular TeX string.
 
 === License ===
 
    Copyright 2012 Andrei Barbu. All rights reserved.
    This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
+   it under the terms of the GNU Lesser General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
    (at your option) any later version.
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-   You should have received a copy of the GNU General Public License
+   GNU Lesser General Public License for more details.
+   You should have received a copy of the GNU Lesser General Public License
    along with this program.  If not, see http://www.gnu.org/licenses.
 __NOTOC__

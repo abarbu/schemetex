@@ -1,0 +1,338 @@
+I'm going to:
+  change ... a to a ...
+  and make ..<symbol> a
+  for ..@ and ..@n that check that each binding is either in the set or not in the set,  just like @ and @n
+
+Not sufficient!
+Need multiple bindings for a, but to separate by ("mo" ",")
+
+
+Need to unify r:call
+
+(define r:call
+ `(((pre ... ("mi" f) ("(" a ..@n ("mo" ",")) post ...)
+    (pre ("call" ("mi" f) a) post))
+   ((... pre ("mi" f) ("(" a ("mo" ",") b) ... post)
+    (pre ("call" ("mi" f) a b) post))
+   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c) ... post)
+    (pre ("call" ("mi" f) a b c) post))
+   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d) ... post)
+    (pre ("call" ("mi" f) a b c d) post))
+   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e) ... post)
+    (pre ("call" ("mi" f) a b c d e) post))
+   ((... pre ("mi" f) ("(" a ("mo" ",") b ("mo" ",") c ("mo" ",") d ("mo" ",") e ("mo" ",") j) ... post)
+    (pre ("call" ("mi" f) a b c d e j) post))))
+
+want to say something like:
+
+((... pre ("mi" f) ("(" ..? (lambda (bindings) (not (equal? binding ("mo" ",")))) a) ... post)
+ (pre ("call" ("mi" f) a) post))
+
+(define r:call
+ `(((... pre ("mi" f) ("(" ..@ (("mo" ",")) a) ... post)
+    (pre ("call" ("mi" f) a) post))
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b) ... post)
+    (pre ("call" ("mi" f) a b) post))
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c) ... post)
+    (pre ("call" ("mi" f) a b c) post))
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d) ... post)
+    (pre ("call" ("mi" f) a b c d) post))
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e) ... post)
+    (pre ("call" ("mi" f) a b c d e) post))
+   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e ("mo" ",") ..@ (("mo" ",")) j) ... post)
+    (pre ("call" ("mi" f) a b c d e j) post))))
+
+
+;;(define *tex:string-mathmode-regexp* "^\s*\\$\(.*\)\s*\\$ *$")
+
+;; converts:
+;; ("mo" "(")
+;; ("mn" "2")
+;; ("mi" "pi")
+;; ("msup" ("mo" ")") ("mi" "d"))
+;; to
+;; ("msup" ("mrow"
+;;          ("mo" "(")
+;;          ("mn" "2")
+;;          ("mi" "pi")
+;;          ("mo" ")")) ("mi" "d"))
+
+;; (mathml-sxml:bracket-and-pivot '(("|" . "|") ("(" . ")") ("[" . "]") ("{" . "}")) '("msup" "msub") doc)
+;; (define (mathml-sxml:bracket-and-pivot pivots ops doc)
+;;  (define (mo? m doc) (and (equal? (first doc) "mo") (equal? (second doc) m)))
+;;  (cond ((not (list? doc)) doc)
+;;        ((> (length doc) 1)
+;;         (cons (car doc
+;;                    (let ((subdoc (cdr doc)))
+;;                     (let loop ((idx 1) (out '()) (brackets '()))
+;;                      (if (>= idx (length subdoc))
+;;                          out
+;;                          (cond ((a-mo? (map car pivots) subdoc)))))))))))
+
+(define *sxml2*
+ '("mfrac"
+   ("mn" "1")
+   ("msqrt"
+    ("mo" "(")
+    ("mn" "2")
+    ("mi" "pi")
+    ("msup"
+     ("mo" ")")
+     ("mi" "d"))
+    ("mo" "|")
+    ("mi" "Sigma")
+    ("msup"
+     ("mo" "|")
+     ("mfrac"
+      ("mstyle" ("mn" "1"))
+      ("mstyle" ("mn" "2")))))))
+
+(when #f
+
+ ;; (trace r-ref r-+ r-- r-* r-/ r-expt r-bar r-neg r-transpose sqrt exp r-sum r-product)
+
+ ;; (define *sxml* (tex:string->mathml #@"$\frac{1}{(2\pi)^\frac{d}{2}|\Sigma|^\frac{1}{2}}e^{-\frac{1}{2}(x-\mu)'\Sigma^{-1}(x-\mu)}$"))
+
+ ;; (define *sxml* (tex:string->mathml #@"$\Sigma_x x$"))
+ ;; (define *sxml* (tex:string->mathml #@"$\Sigma_{x=1}^{100} x$"))
+ ;; (pp (mathml->pre-expression *sxml*))
+
+ ;; variable subscript-superscript that is non-constant should reference into a multidimensional matrix
+ ;; requires resolving referents
+ ;;  will do with a propagation pass
+ ;;  sounds like a framework for passing data along the tree would be useful
+
+ ;; The goal, run the following with viterbi; even better, figure it out automatically
+ ;; (define *sxml* (tex:string->mathml #@"$\max_{j_1,\ldots,j_T}\sum_{t=1}^T f(b^t_{j_t})+\sum_{t=2}^T g(b^{t-1}_{j_{t-1}},b^t_{j_t})$"))
+ ;; (pp (mathml->pre-expression *sxml*))
+
+ ;; I wonder if I can write a parser in a church-like language
+ ;; I can express that the formula must be valid
+ ;;  that types must match
+
+ ;; maybe I should change all function calls into:
+ ;; (call function args)
+ ;; like that sqrt -> (call sqrt ("(" args)) and I no longer need this
+ ;;  special part of the rule
+ ;; juxtaposition becomes (call "*" args)
+ ;; and by the end I will only have call nodes
+
+ ;; (define *sxml* (tex:string->mathml #@"$xya-z$"))
+ ;; (pp (mathml->pre-expression *sxml*))
+
+ ;; (define *sxml* (tex:string->mathml #@"$f(x,y,a,z) = xya-z$"))
+ ;; (pp (mathml->pre-expression *sxml*))
+
+ ;; (define *sxml* (tex:string->mathml #@"$x-yz$"))
+ ;; (pp (mathml->pre-expression *sxml*))
+
+ (tex->lambda #@"$\Sigma_{x=1}^{100} x$")
+ (tex->lambda #@"$\Sigma_{x=1}^{100} y_x$")
+ (tex->lambda #@"$f(x)y$")
+ (tex->lambda #@"$\sum_xx^2$")
+ (tex->lambda #@"$\sum_xx^2+\sum_yy^3$")
+ (tex->lambda #@"$\sum_x(x^2+y^3)$")
+ (tex->lambda #@"$\sum_x\{x^2+y^3\}$")
+ (tex->lambda #@"$\sum_xx^2+y^3$")
+ (tex->lambda #@"$\sum_xx^2\prod_yy^3$")
+ (tex->lambda #@"$(\sum_xx^2)(\sum_yy^3)$")
+ (tex->lambda #@"$f(x,y)=x^2+y^2$")
+ (tex->lambda #@"$f(x)^2+y^2$")
+ (tex->lambda #@"$f(x,z)+y^2$")
+ (tex->lambda #@"$f(x,z)^3+y^2$")
+ (tex->lambda #@"$\sum_{x}y_x$")
+ (tex->lambda #@"$x_y$")
+ (tex->lambda #@"$x>y$")
+ (tex->lambda #@"$x=y$")
+
+ ;; Broken
+ (tex->lambda #@"$T(p)=\frac{T_0}{1-\frac{RT_0}{L}\log\frac{p}{p_{\text{sat}}(T_0)}}$")
+ ;; this is equal to sum(sum()) not sum*sum; this is wrong
+ (tex->lambda #@"$\sum_xx^2\sum_yy^3$")
+ (tex->lambda #@"$\sum_{x,y}x^2+y^3$")
+ ;;  should be (tex->lambda #@"$\sum_x\sum_y(x^2+y^3)$"), but is nowhere close
+ ;; org-preview-latex does not recognize this if multiline and not using $
+ (tex:string->mathml #@"$\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$")
+ (tex->lambda #@"$\sum^100_{x}y_x$")
+ (tex->lambda #@"$\sqrt[4]{x}$")
+ (tex->lambda #@"$\sum^100_{x=10}y_x$")
+ ;; need to think about this
+ (tex->lambda #@"$\log a \log b$")
+ (tex->lambda #@"$x=\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$")
+
+ ;; > (pp (tex:string->mathml #@"$x=\begin{cases} k & 3 \\ n & 2 \\ k-1 & 1 \end{cases}$"))
+ ;; ("mrow"
+ ;;  ("mi" "x")
+ ;;  ("mo" "=")
+ ;;  ("mrow"
+ ;;   ("mo" "{")
+ ;;   ("mrow"
+ ;;    ("mstyle"
+ ;;     ("mtable"
+ ;;      ("mtr" ("mtd" ("mi" "k")) ("mtd" ("mn" "3")))
+ ;;      ("mtr" ("mtd" ("mi" "n")) ("mtd" ("mn" "2")))
+ ;;      ("mtr" ("mtd" ("mi" "k") ("mo" "-") ("mn" "1")) ("mtd" ("mn" "1"))))))))#T
+
+ ;; Two kinds of summations, maps and ranged
+ ;; variable subscripts are list or vector accesses, or function calls
+
+ ;; f(x,y) = x^2+y^2
+ ;; recognize function calls and if there is one on the left with an equals it's a function definition
+
+ ;; reorganize and make all function calls into "call" syntax
+
+ ;; more predictable argument order
+
+ ;; TODO
+ ;; piecewise functions, need logical operators first (eq, lt, gt, leq, etc)
+ ;;                      and set operators, like \in, \cup, etc
+ ;;                      list comprehensions (x \to y, dots)
+ ;; elimination of spaces
+ ;; broken | with P(x|y)|x|, bad numbering
+ ;; implement testp
+ ;; parsing/operator environments
+ ;; bug in pattern matches with no variables
+ ;; some more common notation:
+ ;;  x', x_1, \hat{x}, \hbar{x}, \mathbb{x}, \Sigma_^, \min, \max, \Product^_
+ ;;  combinations, stirling numbers, !, comparison ops
+ ;;  sign
+ ;;  trig ops
+ ;; some way to define matrices
+ ;;  det, tr
+ ;; log, ln
+ ;; sets: intersection, union
+ ;; stats: var, E, Pr/p, arithmetic on random variables
+ ;; let statements to bind named variables so they don't depend on order
+ ;; integral with MC, derivative with AD
+ ;; RK for ODEs
+ ;; x' is either transpose or new op
+ ;; replace ! by prefixing everything with an @ sign
+ ;; FIXME Nested |'s are broken
+ ;; recursive functions
+ ;; custom declare math operator
+
+ (tex->lambda #@"$T(j,i,tau)=tau_{j,t}$")
+
+ (pp (mathml->pre-expression (tex:string->mathml #@"$\sum_{i=1}^n\sum_{j=1}^2T_{j,i}[\log \tau_j - \frac{1}{2}\log|\Sigma_j|-\frac{1}{2}(x_i-\mu_j)'\Sigma_j^{-1}(x_i-\mu_j)-\frac{d}{2}\log 2\pi]$")))
+
+ ;; #(PRE-EXPRESSION
+ ;;   \s\l\i\b:G23
+ ;;   ()
+ ;;   (R-SUM
+ ;;    (RANGE 1 ("mi" "n"))
+ ;;    (LAMBDA
+ ;;     (I)
+ ;;     (R-SUM
+ ;;      (RANGE 1 2)
+ ;;      (LAMBDA
+ ;;       (J)
+ ;;       (R-*
+ ;;        (R-REF (R-REF ("mi" "T") J) I)
+ ;;        (R--
+ ;;         (R--
+ ;;          (R--
+ ;;           (LOG (R-REF ("mi" "tau") J))
+ ;;           (R-/ (LOG (R-BAR (R-REF ("mi" "Sigma") J))) 2))
+ ;;          (R-*
+ ;;           (R-*
+ ;;            (R-/
+ ;;             (R-TRANSPOSE
+ ;;              (R-- (R-REF ("mi" "x") I) (R-REF ("mi" "mu") J)))
+ ;;             2)
+ ;;            (R-EXPT (R-REF ("mi" "Sigma") J) (R-NEG 1)))
+ ;;           (R-- (R-REF ("mi" "x") I) (R-REF ("mi" "mu") J))))
+ ;;         (R-* (R-/ ("mi" "d") 2) (LOG (R-* 2 3.141592653589793))))))))))#T
+
+ )
+
+;; Works:
+(when #f
+ ;; (define q (tex #@"$\sum_{i=1}^n\sum_cT_{c,i}[\log \tau_c - \frac{1}{2}\log|\Sigma_c|-\frac{1}{2}(x_i-\mu_c)'\Sigma_c^{-1}(x_i-\mu_c)-\frac{d}{2}\log 2\pi]$"))
+
+ ;; (\x \m\u \s\i\g\m\a)
+ (define (gaussian-pdf x mu sigma)
+  ((tex-hash #@"$\frac{1}{\sigma\sqrt{2\pi}}e^{-\frac{(x-\mu)^2}{2\sigma^2}}$") x mu sigma))
+ ;; (\t\a\u \j \f \x \i \m\u S\i\g\m\a \c)
+ (define (em:tji tau j f x i mu sigma c)
+  ((tex-hash #@"$\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_{c=0}^c\tau_cf(x_i,\mu_c,\Sigma_c)}$") tau j f x i mu sigma c))
+ ;; (\n T \j \c)
+ (define (em:tau-j n t j c) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{j,i}}{\sum_{i=0}^n(\sum_{c=0}^cT_{c,i})}$") n t j c))
+ ;; (\n T \c \x)
+ (define (em:mu-c n t c x) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{c,i}x_i}{\sum_{i=0}^n T_{c,i}}$") n t c x))
+ ;; (\n T \c \x \m\u)
+ (define (em:sigma-c n t c x mu) ((tex-hash #@"$\frac{\sum_{i=0}^n T_{c,i}(x_i-\mu_c)(x_i-\mu_c)'}{\sum_{i=0}^n T_{c,i}}$") n t c x mu))
+
+
+ (define (em-gmm nr-classes data nr-iterations)
+  (let loop  ((t (transpose-list-of-lists
+                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
+              (means #f) (variances #f) (tau #f)
+              (iter 0))
+   (pp (list t means variances tau))(newline)
+   (if (= iter nr-iterations)
+       (list means variances tau)
+       (let ((tau (map-n (lambda (j) (em:tau-j (- (length data) 1) t j (- nr-classes 1))) nr-classes))
+             (means (map-n (lambda (c) (em:mu-c (- (length data) 1) t c data)) nr-classes))
+             (variances (map-n (lambda (c) (em:sigma-c (- (length data) 1) t c data mu-1)) nr-classes))
+             (t (map-n-matrix
+                 (lambda (j i) (em:tji tau-1 j gaussian-pdf data i mu-1 sigma-1 (- nr-classes 1)))
+                 nr-classes (length data))))
+        (loop t means variances tau (+ iter 1))))))
+
+ (em-gmm 2 '(1 2 3 4 5  100 110 102 103 104 105) 5)
+ )
+
+(when #f
+ (define (latex-string->scheme latex-string)
+  (latex->scheme (parse-latex latex-string)))
+ (define (tex string) (latex-string->scheme latex-string))
+ (define *tex:stats* (tex:environment
+                 ((^ 'e x) (exp x))
+                 ((^ a b) (expt a b))
+                 ((a b) (* a b))
+                 ((/ a b) (/ a b))
+                 ((- a b) (+ a b))
+                 ((sqrt a) (sqrt a))
+                 ('pi pi)
+                 ((\| a \|) (abs a))
+                 ('Sigma (exp x))           ;??
+                 ))
+ (let-tex-lambda (x)         ;; inputs
+                 '()         ;; custom bindings
+                 *tex:stats* ;; scope
+                 $$))
+
+;; wanted
+(when #f
+ (define (em-gmm nr-classes data nr-iterations)
+  (let loop  ((t (transpose-list-of-lists
+                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
+              (means #f) (variances #f) (tau #f)
+              (iter 0))
+   (pp (list t means variances tau))(newline)
+   (if (= iter nr-iterations)
+       (list means variances tau)
+       (let* ((tau (#@"$\tau_j=\frac{\sum_{i=1}^n T_{j,i}}{\sum_{i=1}^n(\sum_c T_{c,i})}$" :n (length data) :t t :j nr-classes :c nr-classes))
+              (means (#@"$\mu_j=\frac{\sum_{i=1}^n T_{j,i}x_i}{\sum_{i=1}^n T_{j,i}}$" :t t :j nr-classes :x data))
+              (variances (#@"$\Sigma_j=\frac{\sum_{i=1}^n T_{j,i}(x_i-\mu_j)(x_i-\mu_j)'}{\sum_{i=1}^n T_{j,i}}$" :n (length data) :t t :c nr-classes :x data :mu means))
+              (t (#@"$T_{j,i}=\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_c\tau_cf(x_i,\mu_c,\Sigma_c)}$" :tau tau :mu means :sigma variances :f gaussian-pdf :x data :i (length data) :j nr-classes :c nr-classes)))
+        (loop t means variances tau (+ iter 1)))))))
+
+;; Even better
+;;  will need a *tex-handler* in the reader
+(when #f
+ (define (em-gmm nr-classes data nr-iterations)
+  (let loop  ((t (transpose-list-of-lists
+                  (map-n (lambda (_) (map-n (lambda (_) (random-real)) nr-classes)) (length data))))
+              (means #f) (variances #f) (tau #f)
+              (iter 0))
+   (if (= iter nr-iterations)
+       (list means variances tau)
+       (let-tex* ((n (length data)) (j nr-classes) (c nr-classes) 
+                  (x data) (length data) 
+                  (f (lambda-tex (x mu sigma) #@"$\frac{1}{\sigma\sqrt{2\pi}}e^{-\frac{(x-\mu)^2}{2\sigma^2}}$"))
+                  #@"$\tau_j=\frac{1}{n}\sum_{i=1}^nT_{j,i}$"
+                  #@"$\mu_j=\frac{\sum_{i=1}^n T_{j,i}x_i}{\sum_{i=1}^n T_{j,i}}$"
+                  #@"$\Sigma_j=\frac{\sum_{i=1}^n T_{j,i}(x_i-\mu_j)(x_i-\mu_j)'}{\sum_{i=1}^n T_{j,i}}$"
+                  #@"$T_{j,i}=\frac{\tau_jf(x_i,\mu_j,\Sigma_j)}{\sum_c\tau_cf(x_i,\mu_c,\Sigma_c)}$")
+                 (loop t means variances tau (+ iter 1)))))))
