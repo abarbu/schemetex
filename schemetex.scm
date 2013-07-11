@@ -136,7 +136,7 @@
                    bindings))))
        ((equal? '..@ (car pattern))
         (let ((split (a-split-of tree)))
-         (unless (null? (intersection (car split) (second pattern))) (fail))
+         (unless (null? (set-intersectione (car split) (second pattern))) (fail))
          (list (cdddr pattern)
                (second split)
                (tree-pattern:insert-or-fail (third pattern) (car split) #t bindings))))
@@ -782,7 +782,7 @@
 
 (define (pre1-expression-variables pre-expression)
  (map second
-      (remove-duplicates
+      (remove-duplicatese
        (find-matches (lambda (a)
                       (and (list? a)
                          (= (length a) 2)
@@ -854,7 +854,7 @@
 
 (define (ast-variables pre-expression)
  (map second
-      (remove-duplicates
+      (remove-duplicatese
        (find-matches (lambda (a)
                       (and (list? a)
                          (= (length a) 2)
@@ -870,7 +870,7 @@
 
 (define (pre-expression-variables pre-expression)
  (map string->symbol
-      (remove-duplicates
+      (remove-duplicatese
        (append (pre-expression-arguments pre-expression)
                (ast-variables (pre-expression-expression pre-expression))))))
 
@@ -920,8 +920,8 @@
 
 (define (m/ a b)
  (define (left-pseudo-inverse m)
-  (let ((inverse (invert-matrix (m* (transpose-matrix m) m))))
-   (if inverse (m* inverse (transpose-matrix m)) #f)))
+  (let ((inverse (invert-matrix (m* (matrix-transpose m) m))))
+   (if inverse (m* inverse (matrix-transpose m)) #f)))
  ;; FIXME Double check this
  (m* a (left-pseudo-inverse b)))
 (define (m-expt m n)
@@ -957,7 +957,7 @@
 
 (op1 bar (n abs) (v magnitude) (m determinant))
 (op1 neg (n -) (v v-neg) (m m-neg))
-(op1 transpose (n identity) (v v-transpose) (m transpose-matrix))
+(op1 transpose (n identity) (v v-transpose) (m matrix-transpose))
 
 (op2 + (n n +) (v v v+) (cv cv cv+) (m m m+))
 (op2 - (n n -) (v v v-) (cv cv cv-) (m m m-))
