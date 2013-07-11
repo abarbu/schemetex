@@ -955,7 +955,7 @@
        (unless r (error "fuck-up"))
        ((cadr r) ,%a ,%b)))))))
 
-(op1 bar (n abs) (v magnitude) (m determinant))
+(op1 bar (n abs) (l length) (v vector-length) (m determinant))
 (op1 neg (n -) (v v-neg) (m m-neg))
 (op1 transpose (n identity) (v v-transpose) (m matrix-transpose))
 
