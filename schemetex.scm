@@ -9,11 +9,14 @@
  #\@
  (lambda (port)
   (unless (equal? (read-char port) #\") (error "Bad tex string"))
-  (let loop ((buffer '()))
-   (let ((char (read-char port)))
-    (if (equal? char #\")
-        (list->string (reverse buffer))
-        (loop (cons char buffer)))))))
+  ;; convert newlines to spaces so that other regexes will match correctly
+  (irregex-replace/all (irregex "\\n" "s")
+                       (let loop ((buffer '()))
+                        (let ((char (read-char port)))
+                         (if (equal? char #\")
+                             (list->string (reverse buffer))
+                             (loop (cons char buffer)))))
+                       " ")))
 
 ;;; Pattern matcher
 
