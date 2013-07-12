@@ -65,11 +65,13 @@
 
 ;; Replace syntax:
 ;; a ! f
-;;  where f is a function (f :: binding -> binding)
-;;  will be passed the binding for a and will in the final output replace a with the output of f
+;; (variable1 variable2 <etc>) ! f
+;;  where f is a function (f :: (binding ->)+ bindings)
+;;  will be passed the binding for a (or the other variables) and will output the result of f
 ;; a % f
-;;  where f is a function (f :: binding -> bindings)
-;;  will be passed the binding for a and will in the final output replace a with the output of f
+;; (variable1 variable2 <etc>) ! f
+;;  where f is a function (f :: (binding ->)+ bindings)
+;;  will be passed the binding for a (or the other variables) and will output the result of f
 ;;  this will splice the output f of into the tree
 
 (define (tree-pattern:present? variable bindings) (assoc variable bindings))
@@ -222,8 +224,21 @@
          (loop (cdr pattern)
                (cons (cadar pattern) result)))
         ((list? (car pattern))
-         (loop (cdr pattern)
-               (cons (pattern-replace (car pattern) bindings) result)))
+         (cond ((and (> (length pattern) 1)
+                   (member (second pattern) '(! %)))
+                (when (or (< (length pattern) 3) (not (procedure? (third pattern))))
+                 (error "Bad !/% pattern ~s" pattern))
+                (let ((out
+                       (apply
+                        (third pattern)
+                        (map (lambda (var) (tree-pattern:binding-or-error var bindings)) (first pattern)))))
+                 (loop (drop pattern 3)
+                       (if (eq? (second pattern) '!)
+                           (cons out result)
+                           (append (reverse out) result)))))
+               (else
+                (loop (cdr pattern)
+                      (cons (pattern-replace (car pattern) bindings) result)))))
         ((symbol? (car pattern))
          (let ((r (tree-pattern:binding-or-error (car pattern) bindings))
                (f (if (and (> (length pattern) 2) (member (second pattern) '(! %)))
@@ -231,6 +246,7 @@
                        (unless (procedure? (third pattern)) (error "Bad !/% pattern ~s" pattern))
                        (third pattern))
                       identity))
+               ;; FIXME This might be a bug, does ! splice when the variable had an ellipsis?
                (ellipsis? (or (tree-pattern:ellipsis? (car pattern) bindings)
                              (and (> (length pattern) 2) (equal? (second pattern) '%)))))
           (loop (drop pattern (if (and (> (length pattern) 2) (member (second pattern) '(! %))) 3 1))
@@ -337,8 +353,8 @@
 
 (define (range m n)
  (if (< n m)
-     (reverse (map-m-n identity n m))
-     (map-m-n identity m n)))
+     (reverse (map-m-n identity n (- m 1)))
+     (map-m-n identity m (- n 1))))
 
 (define (v-transpose v)
  (if (column-vector? v)
@@ -372,16 +388,7 @@
  (l-matrix-ref m (vector->list v)))
 
 (define (compact-type obj)
- (cond ((number? obj) 'n)
-       ((matrix? obj) 'm)
-       ((column-vector? obj) 'cv)
-       ((vector? obj) 'v)
-       ((list? obj) 'l)
-       ((procedure? obj) 'p)
-       (else (error "fuck-up"))))
-
-(define (compact-type obj)
- (cond ((number? obj) 'n)
+ (cond ((or (number? obj) (tape? obj) (dual-number? obj)) 'n)
        ((matrix? obj) 'm)
        ((column-vector? obj) 'cv)
        ((vector? obj) 'v)
@@ -493,6 +500,7 @@
         "{" "}"
         (number-brackets "[" "]" tree)))))))))
 
+;; this is for displying equations and has no semantics
 (define r:mstyle
  `(((... a ("mstyle" c) ... b)
     (a c b))))
@@ -610,6 +618,12 @@
 (define r:stability
  `((('r-* ('r-/ 1 d) n)
     ('r-/ n d))))
+
+(define r:floating-point
+ `(((... pre ("mn" a) ("mo" ".") ("mn" b) ... post)
+    (pre (a b) ! ,(lambda (a b) `("mn" ,(conc a "." b))) post))
+   ((... pre ("mn" a) ("mo" ".") ("msup" ("mn" b) ... expr) ... post)
+    (pre ("msup" ("mrow" (a b) ! ,(lambda (a b) `("mn" ,(conc a "." b)))) expr)  post))))
 
 ;; TODO This would benefit from optional args
 ;; TODO This would benefit from ... a ?
@@ -810,6 +824,7 @@
    ((before
      `(,r:fix-operators
        ,r:mstyle
+       ,r:floating-point
        ,r:brackets-subscripts/superscripts
        ,r:sum/prod-1
        ,r:sum/prod-2
@@ -1143,7 +1158,7 @@
   (test "argument order 2"  2 ((tex #@"$f(x,y,a,z) = xya-z$") 1 2 3 4))
   (test "argument order 2"  2 ((tex #@"$f(z,y,a,x) = xya-z$") 4 1 2 3))
   (test "sum map" 12 ((tex #@"$\sum_x z_{x}$") '(2 3 4) '#(1 2 3 4 5 6)))
-  (test "sum range" 12 ((tex #@"$\sum_{x=2}^{4} z_{x}$") '#(1 2 3 4 5 6)))
+  (test "sum range" 12 ((tex #@"$\sum_{x=2}^{5} z_{x}$") '#(1 2 3 4 5 6)))
   (test "piecewise 0"  6 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 0))
   (test "piecewise 1" 7 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 1))
   (test "piecewise 2" 8 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 2))))
