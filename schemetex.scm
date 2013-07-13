@@ -1,8 +1,8 @@
 (module schemtex *
 (import chicken scheme srfi-1)
 (begin-for-syntax (require-extension traversal))
-(use traversal nondeterminism define-structure linear-algebra irregex test AD)
-(use srfi-13 srfi-69 shell)
+(use traversal nondeterminism define-structure linear-algebra irregex test AD
+     srfi-13 srfi-69 shell ssax)
 
 ;; belongs in traversal
 
@@ -431,6 +431,14 @@
        ((list? doc) (removeq #f (map (lambda (doc) (sxml:map f tag doc)) doc)))
        (else doc)))
 
+(define (stringify l)
+ (cond ((null? l) l)
+       ((string? l) l)
+       ((number? l) l)
+       ((list? l) (map stringify l))
+       ((symbol? l) (symbol->string l))
+       (else (error l))))
+
 (define (tex:string->mathml s)
  (define (lines string) (irregex-split "\n" string))
  (define (system-output command)
@@ -441,14 +449,22 @@
       (call-with-output-file pathname
        (lambda (port)
         (for-each (lambda (line) (display line port) (newline port)) lines)))))
- (let ((tex-file (create-temporary-file "tex")))
+ (let ((tex-file (create-temporary-file "tex"))
+       (sc-file (create-temporary-file "sc")))
   (write-text-file (list (tex:string-strip-mathmode s)) tex-file)
-  (system-output (format #f "tex2mathml ~a" tex-file))
+  (system
+   (format #f "blahtex --mathml --mathml-encoding long --disallow-plane-1 --indented --spacing relaxed < ~a > ~a"
+           tex-file sc-file))
   (sxml:map (lambda _ #f) "@"
-            (second (second (second (second 
-                                     (call-with-input-file 
-                                       (pathname-replace-extension tex-file "sc")
-                                      read))))))))
+            (second
+             (second
+              (second
+               (second
+                (call-with-input-string
+                  (string-join
+                   (map (lambda (s) (irregex-replace/all ";<" (irregex-replace/all ">&" s ">") "<"))
+                        (read-text-file sc-file)))
+                 (lambda (in-port) (stringify (ssax:xml->sxml in-port '())))))))))))
 
 (define (univariate-gaussian x mu sigma)
  (define (sqr x) (* x x))
