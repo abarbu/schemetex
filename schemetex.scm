@@ -8,6 +8,18 @@
 
 (define (list-update l i f) (list-replace l i (f (list-ref l i))))
 
+(define (for-each-accum f i l)
+ (let loop ((i i) (l l))
+  (if (null? l)
+      i
+      (let ((x (f i (car l))))
+       (loop x (cdr l))))))
+
+(define (deep-map p f tree)
+ (cond ((p tree) (f tree))
+       ((list? tree) (map (lambda (subtree) (deep-map p f subtree)) tree))
+       (else tree)))
+
 ;;; Real literals
 
 (set-sharp-read-syntax! 
@@ -213,13 +225,6 @@
       (let ((l (pattern-match1 pattern tree bindings)))
        (loop (first l) (second l) (third l))))))
 
-(define (for-each-accum f i l)
- (let loop ((i i) (l l))
-  (if (null? l)
-      i
-      (let ((x (f i (car l))))
-       (loop x (cdr l))))))
-
 (define (pattern-replace pattern bindings)
  (let loop ((pattern pattern) (result '()))
   (cond ((null? pattern) (reverse result))
@@ -261,7 +266,6 @@
                     (append (reverse (f r)) result)
                     (cons (f r) result)))))
         (else (loop (cdr pattern) (cons (car pattern) result))))))
-
 
 (define (match-replace-rule rule tree)
  (let ((match (possibly? (pattern-match (first rule) tree '()))))
@@ -308,7 +312,7 @@
 ;; Broken:
 
 ;; (define *sxml* (tex->mathml #@"$x(y+2)$"))
-;; (pp (mathml->pre-expression *sxml*))
+;; (pp (mathml->expression *sxml*))
 ;; So there's a question, is X a function or is this multiplication?
 ;; Right now:
 ;; λ> (pp (tex->lambda #@"$x(y+2)$"))
@@ -325,61 +329,7 @@
 ;; So I need to distinguish
 ;; xy, x*y vs x(y)
 
-(define-structure pre-expression name arguments expression)
-
-(define-structure column-vector v)
-
-(define (range m n)
- (if (< n m)
-     (reverse (map-m-n identity n (- m 1)))
-     (map-m-n identity m (- n 1))))
-
-(define (v-transpose v)
- (if (column-vector? v)
-     (column-vector-v v)
-     (make-column-vector v)))
-(define (r-vector? v) (or (vector? v) (column-vector? v)))
-(define (row-vector? v) (and (not (matrix? v))
-                      (not (column-vector? v))
-                      (vector? v)))
-(define (lift-column-vector2 f)
- (lambda (a b) (make-column-vector (f (column-vector-v a) (column-vector-v b)))))
-(define (lift-column-vector1 f)
- (lambda (a) (make-column-vector (f (column-vector-v a)))))
-
-(define cv+ (lift-column-vector2 v+))
-(define cv- (lift-column-vector2 v-))
-
-(define (cv*v cv v) (dot (column-vector-v cv) v))
-(define (v*cv v cv) (dot v (column-vector-v cv)))
-(define (cv*m cv m) (make-column-vector (map-vector x (v*m (column-vector-v cv) m))))
-(define (v-neg v) (k*v -1 v))
-(define (m-neg m) (k*m -1 m))
-(define (k*cv k cv) (make-column-vector (k*v k (column-vector-v cv))))
-
-(define (cv-vector-ref cv n) (vector-ref (column-vector-v cv) n))
-
-(define (l-matrix-ref m l)
- (foldl (lambda (m i) (vector-ref m i)) m l))
-
-(define (v-matrix-ref m v)
- (l-matrix-ref m (vector->list v)))
-
-(define (compact-type obj)
- (cond ((or (number? obj) (tape? obj) (dual-number? obj)) 'n)
-       ((matrix? obj) 'm)
-       ((column-vector? obj) 'cv)
-       ((vector? obj) 'v)
-       ((list? obj) 'l)
-       ((procedure? obj) 'p)
-       (else (error "fuck-up"))))
-
-(define (gaussian-pdf-univariate x mu Sigma)
- (define (sqr x) (* x x))
- (* (/ 1 (sqrt (* 2 (* pi Sigma))))
-    (exp (- 0
-            (/ (sqr (- x mu))
-               (* 2 Sigma))))))
+(define-structure expression name arguments body)
 
 (define *tex:string-mathmode-regexp* "^\\s*\\$(.*)\\s*\\$ *$")
 (define (tex:string-mathmode? s) (irregex-match *tex:string-mathmode-regexp* s))
@@ -404,18 +354,14 @@
        ((list? doc) (removeq #f (map (lambda (doc) (sxml:map f tag doc)) doc)))
        (else doc)))
 
-(define (stringify l)
- (cond ((null? l) l)
-       ((string? l) l)
-       ((number? l) l)
-       ((list? l) (map stringify l))
-       ((symbol? l) (symbol->string l))
-       (else (error l))))
-
 (define (tex->mathml s)
- (define (lines string) (irregex-split "\n" string))
- (define (system-output command)
-  (lines (execute (list command) capture: #t))) 
+ (define (stringify l)
+  (cond ((null? l) l)
+        ((string? l) l)
+        ((number? l) l)
+        ((list? l) (map stringify l))
+        ((symbol? l) (symbol->string l))
+        (else (error l))))
  (define (write-text-file lines pathname)
   (if (string=? pathname "-")
       (for-each (lambda (line) (display line) (newline)) lines)
@@ -439,9 +385,58 @@
                         (read-text-file sc-file)))
                  (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '())))))))))))
 
-(define (univariate-gaussian x mu sigma)
- (define (sqr x) (* x x))
- (* (/ (* (sqrt (* 2 pi)) sigma)) (exp (- (/ (sqr (- x mu)) (* 2 (sqr sigma)))))))
+;;; AST operations
+
+(define (pre1-expression-variables expression)
+ (map second
+      (remove-duplicatese
+       (find-matches (lambda (a)
+                      (and (list? a)
+                         (= (length a) 2)
+                         (equal? (car a) "mi")))
+                     expression))))
+
+;; This clears out the "mi" markets for local variables
+(define (expression-bind-variables e binders)
+ (let ((binders
+        (if (and (list? e) (= (length e) 3)
+               (equal? (first e) 'lambda) (not (null? (second e))))
+            (append (second e) binders)
+            binders)))
+  (cond ((and (list? e) (= (length e) 2) (equal? (car e) "mi")
+            (member (string->symbol (string-upcase (second e))) binders))
+         (string->symbol (string-upcase (second e))))
+        ((list? e)
+         (map (lambda (e) (expression-bind-variables e binders)) e))
+        (else e))))
+
+(define (ast-variables expression)
+ (map second
+      (remove-duplicatese
+       (find-matches (lambda (a)
+                      (and (list? a)
+                         (= (length a) 2)
+                         (equal? (car a) "mi")))
+                     expression))))
+
+(define (ast-variables->symbols expression)
+ (deep-map (lambda (a) (and (list? a)
+                     (= (length a) 2)
+                     (equal? (car a) "mi")))
+           (lambda (a) (string->symbol (cadr a)))
+           expression))
+
+(define (expression-variables expression)
+ (map string->symbol
+      (remove-duplicatese
+       (append (expression-arguments expression)
+               (ast-variables (expression-body expression))))))
+
+(define (expression->lambda expression)
+ `(lambda ,(expression-variables expression)
+   ,(ast-variables->symbols (expression-body expression))))
+
+;;; Rewrite rules
 
 (define (number-brackets open-bracket close-bracket tree)
  (let ((id 0) (open '()))
@@ -780,29 +775,7 @@
  `((("mtr" ("mtd" val) ("mtd" test))
     (test val))))
 
-(define (pre1-expression-variables pre-expression)
- (map second
-      (remove-duplicatese
-       (find-matches (lambda (a)
-                      (and (list? a)
-                         (= (length a) 2)
-                         (equal? (car a) "mi")))
-                     pre-expression))))
-
-(define (pre-expression-bind-local e binders)
- (let ((binders
-        (if (and (list? e) (= (length e) 3)
-               (equal? (first e) 'lambda) (not (null? (second e))))
-            (append (second e) binders)
-            binders)))
-  (cond ((and (list? e) (= (length e) 2) (equal? (car e) "mi")
-            (member (string->symbol (string-upcase (second e))) binders))
-         (string->symbol (string-upcase (second e))))
-        ((list? e)
-         (map (lambda (e) (pre-expression-bind-local e binders)) e))
-        (else e))))
-
-(define (mathml->pre-expression mathml)
+(define (mathml->expression mathml)
  (let*
    ((before
      `(,r:hat
@@ -843,59 +816,27 @@
                                  (list r:piecewise-1)
                                  mathml)))))
   (if (possibly? (pattern-match '("assign" ("call" ("mi" f) ... args) ... post) tree '()))
-      (make-pre-expression
+      (make-expression
        (second (second (second tree)))
        (pre1-expression-variables (cddr (second tree)))
-       (pre-expression-bind-local
+       (expression-bind-variables
         (match-replace-staging after (cons "(" (cddr tree))) '()))
-      (make-pre-expression (gensym "tex:") '() 
-                           (pre-expression-bind-local
+      (make-expression (gensym "tex:") '() 
+                           (expression-bind-variables
                             (match-replace-staging after tree) '())))))
 
-(define (ast-variables pre-expression)
- (map second
-      (remove-duplicatese
-       (find-matches (lambda (a)
-                      (and (list? a)
-                         (= (length a) 2)
-                         (equal? (car a) "mi")))
-                     pre-expression))))
-
-(define (ast-variables->symbols pre-expression)
- (deep-map (lambda (a) (and (list? a)
-                     (= (length a) 2)
-                     (equal? (car a) "mi")))
-           (lambda (a) (string->symbol (cadr a)))
-           pre-expression))
-
-(define (pre-expression-variables pre-expression)
- (map string->symbol
-      (remove-duplicatese
-       (append (pre-expression-arguments pre-expression)
-               (ast-variables (pre-expression-expression pre-expression))))))
-
-(define (pre-expression->lambda pre-expression)
- `(lambda ,(pre-expression-variables pre-expression)
-   ,(ast-variables->symbols (pre-expression-expression pre-expression))))
+;;; API
 
 (define (tex->lambda string)
- (pre-expression->lambda (mathml->pre-expression (tex->mathml string))))
+ (expression->lambda (mathml->expression (tex->mathml string))))
 (define (tex->arguments string)
- (pre-expression-variables (mathml->pre-expression (tex->mathml string))))
+ (expression-variables (mathml->expression (tex->mathml string))))
 (define (tex-function string)
  (eval (tex->lambda string)))
 
-(define (tex:pp string) (pp (mathml->pre-expression (tex->mathml string))))
+(define (tex:pp string) (pp (mathml->expression (tex->mathml string))))
 
-(define (find-matches p l)
- (cond ((p l) (list l))
-       ((list? l) (qmap-reduce append '() (lambda (l) (find-matches p l)) l))
-       (else '())))
-
-(define (deep-map p f tree)
- (cond ((p tree) (f tree))
-       ((list? tree) (map (lambda (subtree) (deep-map p f subtree)) tree))
-       (else tree)))
+;;; Operators
 
 (define (flip2 f) (lambda (a b) (f b a)))
 
@@ -905,6 +846,46 @@
 (define (product-v v f) (qmap-reduce-vector * 1 f v))
 (define (sum-n n f) (sum f n))
 (define (product-n n f) (product f n))
+
+(define-structure column-vector v)
+
+(define (range m n)
+ (if (< n m)
+     (reverse (map-m-n identity n (- m 1)))
+     (map-m-n identity m (- n 1))))
+
+(define (v-transpose v)
+ (if (column-vector? v)
+     (column-vector-v v)
+     (make-column-vector v)))
+(define (r-vector? v) (or (vector? v) (column-vector? v)))
+(define (row-vector? v) (and (not (matrix? v))
+                      (not (column-vector? v))
+                      (vector? v)))
+(define (lift-column-vector2 f)
+ (lambda (a b) (make-column-vector (f (column-vector-v a) (column-vector-v b)))))
+(define (lift-column-vector1 f)
+ (lambda (a) (make-column-vector (f (column-vector-v a)))))
+
+(define cv+ (lift-column-vector2 v+))
+(define cv- (lift-column-vector2 v-))
+
+(define (cv*v cv v) (dot (column-vector-v cv) v))
+(define (v*cv v cv) (dot v (column-vector-v cv)))
+(define (cv*m cv m) (make-column-vector (map-vector x (v*m (column-vector-v cv) m))))
+(define (v-neg v) (k*v -1 v))
+(define (m-neg m) (k*m -1 m))
+(define (k*cv k cv) (make-column-vector (k*v k (column-vector-v cv))))
+
+(define (cv-vector-ref cv n) (vector-ref (column-vector-v cv) n))
+
+(define (l-matrix-ref m l)
+ (foldl (lambda (m i) (vector-ref m i)) m l))
+
+(define (v-matrix-ref m v)
+ (l-matrix-ref m (vector->list v)))
+
+(define (m*v-new m v) (make-column-vector (m*v m v)))
 
 (define (cv/k cv k) (k*cv (/ k) cv))
 
@@ -921,6 +902,15 @@
        ((fixnum? n) (m-expt (m* m m) (- n 1)))
        (else (error "Can't raise matrix ~s to the power of ~s" m n))))
 (define (v-expt v i) (map-vector (lambda (e) (expt e i)) v))
+
+(define (compact-type obj)
+ (cond ((or (number? obj) (tape? obj) (dual-number? obj)) 'n)
+       ((matrix? obj) 'm)
+       ((column-vector? obj) 'cv)
+       ((vector? obj) 'v)
+       ((list? obj) 'l)
+       ((procedure? obj) 'p)
+       (else (error "fuck-up"))))
 
 (define-syntax op1
  (er-macro-transformer
@@ -948,8 +938,6 @@
                                   (cddr form))))))
        (unless r (error "unhandled types" ',(second form) (compact-type ,%a) (compact-type ,%b)))
        ((cdr r) ,%a ,%b)))))))
-
-(define (m*v-new m v) (make-column-vector (m*v m v)))
 
 (op1 bar
      (abs           (n -> n))
@@ -1042,17 +1030,17 @@
  (er-macro-transformer
   (lambda (form rename compare)
    (let ((bound (map first (second form)))
-         (pre-expression (schemetex#mathml->pre-expression (schemetex#tex->mathml (third form))))
+         (expression (schemetex#mathml->expression (schemetex#tex->mathml (third form))))
          (%set-differencee (rename 'set-differencee)))
     `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
-      (lambda ,(%set-differencee (schemetex#pre-expression-variables pre-expression) bound)
-       ,(schemetex#ast-variables->symbols (schemetex#pre-expression-expression pre-expression))))))))
+      (lambda ,(%set-differencee (schemetex#expression-variables expression) bound)
+       ,(schemetex#ast-variables->symbols (schemetex#expression-body expression))))))))
 
 ;; all variables must be bound either in the let or in the enclosing scope
 (define-syntax tex-let/value
  (er-macro-transformer
   (lambda (form rename compare)
-   (let ((pre-expression (schemetex#mathml->pre-expression (schemetex#tex->mathml (third form)))))
+   (let ((expression (schemetex#mathml->expression (schemetex#tex->mathml (third form)))))
     `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
-      ,(schemetex#ast-variables->symbols (schemetex#pre-expression-expression pre-expression)))))))
+      ,(schemetex#ast-variables->symbols (schemetex#expression-body expression)))))))
 )
