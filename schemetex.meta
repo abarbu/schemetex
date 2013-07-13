@@ -1,0 +1,17 @@
+;;;  -*- Hen -*-
+
+((egg "schemetex.egg")
+ (category math)
+ (author "Andrei Barbu")
+ (maintainer "Andrei Barbu")
+ (license "LGPL")
+ (doc-from-wiki)
+ (synopsis "Run your equations")
+ (depends setup-helper define-structure traversal
+          nondeterminism linear-algebra AD shell ssax
+          scheme2c-compatibility)
+ (test-depends test)
+ (files "schemetex.meta" 
+        "schemetex.release-info"
+        "schemetex.scm" 
+        "schemetex.setup"))

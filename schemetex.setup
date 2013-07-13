@@ -1,0 +1,9 @@
+;;;  -*- Hen -*-
+
+(use setup-helper-mod)
+
+(verify-extension-name "schemetex")
+
+(setup-shared-extension-module 'schemetex (extension-version "0.1")
+  #:inline? #t #:types? #t
+  #:compile-options '(-O3 -keep-shadowed-macros -d2 -C -Wall -C -Wno-unused-but-set-variable -C -Wno-unused-variable))
