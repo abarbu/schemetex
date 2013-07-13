@@ -1,5 +1,6 @@
 (module schemtex *
 (import chicken scheme srfi-1)
+(begin-for-syntax (require-extension traversal))
 (use traversal nondeterminism define-structure linear-algebra irregex test AD)
 (use srfi-13 srfi-69 shell)
 
@@ -907,17 +908,8 @@
  (pre-expression->lambda (mathml->pre-expression (tex:string->mathml string))))
 (define (tex->arguments string)
  (pre-expression-variables (mathml->pre-expression (tex:string->mathml string))))
-(define (tex string)
+(define (tex-function string)
  (eval (tex->lambda string)))
-
-;; One day this should become tex and tex should become tex-unhash
-(define *tex-hash-table* (make-hash-table))
-(define (tex-hash string)
- (let ((ref (hash-table-ref *tex-hash-table* string #f)))
-  (if ref
-      ref
-      (begin (hash-table-set! *tex-hash-table* string (tex string))
-             (hash-table-ref *tex-hash-table* string)))))
 
 (define (tex:pp string) (pp (mathml->pre-expression (tex:string->mathml string))))
 
@@ -1014,6 +1006,37 @@
 (op2 <= (n n <=))
 ;; TODO (op2 star (v v conv))
 
+;; the resulting function will be parametarized by any unbound variables
+(define-syntax tex
+ ;; Fixme, this should generate a lookup table
+ (er-macro-transformer
+  (lambda (form rename compare)
+   (let ((%tex-function (rename 'tex-function)))
+    (if (not (= (length form) 2))
+        (error "tex takes only 2 arguments" (= (length form) 2)))
+    (tex->lambda (second form))))))
+
+;; the resulting function will be parametarized by any unbound variables
+(define-syntax tex-let
+ ;; Fixme, this should generate a lookup table
+ (er-macro-transformer
+  (lambda (form rename compare)
+   (let ((bound (map first (second form)))
+         (pre-expression (mathml->pre-expression (tex:string->mathml (third form))))
+         (%set-differencee (rename 'set-differencee)))
+    `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
+      (lambda ,(%set-differencee (pre-expression-variables pre-expression) bound)
+       ,(ast-variables->symbols (pre-expression-expression pre-expression))))))))
+
+;; all variables must be bound either in the let or in the enclosing scope
+(define-syntax tex-let/value
+ ;; Fixme, this should generate a lookup table
+ (er-macro-transformer
+  (lambda (form rename compare)
+   (let ((pre-expression (mathml->pre-expression (tex:string->mathml (third form)))))
+    `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
+      ,(ast-variables->symbols (pre-expression-expression pre-expression)))))))
+
 (define (multivariate-gaussian-pdf x mu Sigma)
  (let ((n (vector-length Sigma)))
   (* (/ 1
@@ -1021,6 +1044,15 @@
            (sqrt (determinant Sigma))))
      (exp (cv*v (cv*m (k*cv (- (/ 1 2)) (v-transpose (v- x mu))) (invert-matrix Sigma))
                 (v- x mu))))))
+
+;; One day this should become tex and tex should become tex-unhash
+(define *tex-hash-table* (make-hash-table))
+(define (tex-hash string)
+ (let ((ref (hash-table-ref *tex-hash-table* string #f)))
+  (if ref
+      ref
+      (begin (hash-table-set! *tex-hash-table* string (tex-function string))
+             (hash-table-ref *tex-hash-table* string)))))
 
 (define (gaussian-pdf-univariate x mu Sigma)
  (define (sqr x) (* x x))
