@@ -600,6 +600,8 @@
     (a ('r-+ b c) d))
    (("|" a)
     ('r-bar a))
+   (("DoubleVerticalBar" a)
+    ('r-double-bar a))
    (("msup" a b)
     ("expt" a b))))
 
@@ -622,6 +624,10 @@
 (define r:stability
  `((('r-* ('r-/ 1 d) n)
     ('r-/ n d))))
+
+(define r:hat
+ `(((... pre ("mover" ("mi" x) ("mo" "#x302")) ... post)
+    (pre ("mi" x ! ,(lambda (x) (conc x "-hat"))) post))))
 
 (define r:floating-point
  `(((... pre ("mn" a) ("mo" ".") ("mn" b) ... post)
@@ -685,7 +691,7 @@
          ("mo" s1 @ ("log" "lg" "ln" "sin" "cos" "tan"))
          ... in ("mo" op @ ("+" "-"))
          ... post)
-    (pre (s1 ! ,(o string->symbol string-upcase)
+    (pre (s1 ! ,(o string->symbol (lambda (s) (conc "r-" s)))
              ("mrow" in))
          ("mo" op)
          post))))
@@ -694,7 +700,7 @@
  `(((... pre
          ("mo" s1 @ ("log" "lg" "ln" "sin" "cos" "tan"))
          ... in)
-    (pre (s1 ! ,(o string->symbol string-upcase)
+    (pre (s1 ! ,(o string->symbol (lambda (s) (conc "r-" s)))
              ("mrow" in))))))
 
 ;; TODO This is disgusting need some looping construct
@@ -823,7 +829,8 @@
 (define (mathml->pre-expression mathml)
  (let*
    ((before
-     `(,r:fix-operators
+     `(,r:hat
+       ,r:fix-operators
        ,r:mstyle
        ,r:floating-point
        ,r:brackets-subscripts/superscripts
@@ -957,9 +964,9 @@
     `(define (,(string->symbol (string-append "r-" (symbol->string (second form)))) ,%a)
       (let ((r (assoc (list (compact-type ,%a))
                       ;; FIXME The use of eval here is a hack
-                      ',(map (lambda (a) (list (reverse (cdr (reverse a))) (eval (last a)))) (cddr form)))))
-       (unless r (error "fuck-up"))
-       ((cadr r) ,%a)))))))
+                      ',(map (lambda (a) (cons (reverse (cdr (reverse a))) (eval (last a)))) (cddr form)))))
+       (unless r (error "unhandled types" ',(second form) (compact-type ,%a)))
+       ((cdr r) ,%a)))))))
 
 (define-syntax op2
  ;; Fixme, this should generate a lookup table
@@ -969,13 +976,22 @@
     `(define (,(string->symbol (string-append "r-" (symbol->string (second form)))) ,%a ,%b)
       (let ((r (assoc (list (compact-type ,%a) (compact-type ,%b))
                       ;; FIXME The use of eval here is a hack
-                      ',(map (lambda (a) (list (reverse (cdr (reverse a))) (eval (last a)))) (cddr form)))))
-       (unless r (error "fuck-up"))
-       ((cadr r) ,%a ,%b)))))))
+                      ',(map (lambda (a) (cons (reverse (cdr (reverse a))) (eval (last a)))) (cddr form)))))
+       (unless r (error "unhandled types" ',(second form) (compact-type ,%a) (compact-type ,%b)))
+       ((cdr r) ,%a ,%b)))))))
 
 (op1 bar (n abs) (l length) (v vector-length) (m determinant))
+(op1 double-bar (v magnitude))
 (op1 neg (n -) (v v-neg) (m m-neg))
 (op1 transpose (n identity) (v v-transpose) (m matrix-transpose))
+
+(op1 log (n log))
+(op1 lg (n log))
+(op1 ln (n log))
+
+(op1 sin (n sin))
+(op1 cos (n sin))
+(op1 tan (n sin))
 
 (op2 + (n n +) (v v v+) (cv cv cv+) (m m m+))
 (op2 - (n n -) (v v v-) (cv cv cv-) (m m m-))
@@ -996,6 +1012,7 @@
 (op2 < (n n <))
 (op2 >= (n n >=))
 (op2 <= (n n <=))
+;; TODO (op2 star (v v conv))
 
 (define (multivariate-gaussian-pdf x mu Sigma)
  (let ((n (vector-length Sigma)))
