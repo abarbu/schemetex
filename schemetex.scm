@@ -385,6 +385,8 @@
                         (read-text-file sc-file)))
                  (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '())))))))))))
 
+(define (mark-local-variable string) (conc "$" string))
+
 ;;; AST operations
 
 (define (pre1-expression-variables expression)
@@ -404,8 +406,8 @@
             (append (second e) binders)
             binders)))
   (cond ((and (list? e) (= (length e) 2) (equal? (car e) "mi")
-            (member (string->symbol (string-upcase (second e))) binders))
-         (string->symbol (string-upcase (second e))))
+            (member (string->symbol (mark-local-variable (second e))) binders))
+         (string->symbol (mark-local-variable (second e))))
         ((list? e)
          (map (lambda (e) (expression-bind-variables e binders)) e))
         (else e))))
@@ -739,7 +741,7 @@
             (cond ((equal? binder "sum") 'r-sum)
                   ((equal? binder "product") 'r-product)
                   (else (error "fuck-up"))))
-        ('range i top) ('lambda (var ! ,(o string->symbol string-upcase)) in)))
+        ('range i top) ('lambda (var ! ,(o string->symbol mark-local-variable)) in)))
    single))
 
 (define r:map
@@ -749,7 +751,7 @@
                   ((equal? binder "product") 'r-product)
                   (else (error "fuck-up"))))
         ("mi" var)
-        ('lambda (var ! ,(o string->symbol string-upcase)) in)))
+        ('lambda (var ! ,(o string->symbol mark-local-variable)) in)))
    single))
 
 (define r:boolean
