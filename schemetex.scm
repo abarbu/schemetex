@@ -1,7 +1,11 @@
 (module schemtex *
 (import chicken scheme srfi-1)
-(use traversal nondeterminism define-structure linear-algebra irregex test)
+(use traversal nondeterminism define-structure linear-algebra irregex test AD)
 (use srfi-13 srfi-69 shell)
+
+;; belongs in traversal
+
+(define (list-update l i f) (list-replace l i (f (list-ref l i))))
 
 ;;; Real literals
 
@@ -516,7 +520,7 @@
                ("LeftCeiling" . "RightCeiling")
                ("LeftFloor" . "RightFloor")
                ("DoubleVerticalBar" . "DoubleVerticalBar")))))
-(define *container* (cons "mrow" *open-brackets*))
+(define *container* (cons "mtd" (cons "mrow" *open-brackets*)))
 
 (define r:brackets-subscripts/superscripts
  `(((t ... a ("mo" ob @ ,*open-brackets* n)
@@ -695,33 +699,30 @@
 
 ;; TODO This is disgusting need some looping construct
 (define r:call
- `(((... pre ("mi" f) ("(" ..@ (("mo" ",")) a) ... post)
-    (pre ("call" ("mi" f) a) post))
-   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b) ... post)
-    (pre ("call" ("mi" f) a b) post))
-   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c) ... post)
-    (pre ("call" ("mi" f) a b c) post))
-   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d) ... post)
-    (pre ("call" ("mi" f) a b c d) post))
-   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e) ... post)
-    (pre ("call" ("mi" f) a b c d e) post))
-   ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e ("mo" ",") ..@ (("mo" ",")) j) ... post)
-    (pre ("call" ("mi" f) a b c d e j) post))))
+ (let ((sep '(("mo" ",") ..@ (("mo" ",")))))
+  `(((... pre ("mi" f) ("(" ..@ (("mo" ",")) a) ... post)
+     (pre ("call" ("mi" f) ("mrow" a)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e ,@sep j) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e ,@sep j ,@sep k) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k)) post))
+    ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e ,@sep j ,@sep k ,@sep l) ... post)
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k) ("mrow" l)) post)))))
 
-;; TODO This is disgusting need some looping construct
 (define r:call-sup
- `(((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a) s) post))
-   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a b) s) post))
-   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a b c) s) post))
-   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a b c d) s) post))
-   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a b c d e) s) post))
-   ((... pre ("mi" f) ("msup" ("(" ..@ (("mo" ",")) a ("mo" ",") ..@ (("mo" ",")) b ("mo" ",") ..@ (("mo" ",")) c ("mo" ",") ..@ (("mo" ",")) d ("mo" ",") ..@ (("mo" ",")) e ("mo" ",") ..@ (("mo" ",")) j) s) ... post)
-    (pre ("msup" ("call" ("mi" f) a b c d e j) s) post))))
+ (map (lambda (exp)
+       (let ((s (gensym "s")))
+        (list (list-update (first exp) 3 (lambda (l) (list "msup" l s)))
+              (list-update (second exp) 1 (lambda (l) (list "msup" l s))))))
+      r:call))
 
 (define r:call=
  `(((... pre ("call" ("mi" f) ... args) ("mo" "=") ... post)
@@ -853,8 +854,7 @@
        ,r:numbers
        ,r:single-mrow/bracket
        ,r:stability
-       ,r:calls
-       ))
+       ,r:calls))
     (tree (match-replace-staging 
            before
            (number-all-brackets (match-replace-staging  
@@ -1161,5 +1161,7 @@
   (test "sum range" 12 ((tex #@"$\sum_{x=2}^{5} z_{x}$") '#(1 2 3 4 5 6)))
   (test "piecewise 0"  6 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 0))
   (test "piecewise 1" 7 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 1))
-  (test "piecewise 2" 8 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 2))))
+  (test "piecewise 2" 8 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 2))
+  (test "call-grouping 0" 4 ((tex #@"$f(w,i-b)$") (lambda (a b) (+ a b)) 3 2 1))
+  (test "call-grouping 1" 6 ((tex #@"$f(wi-b)$") (lambda (a) (+ a 1)) 3 2 1))))
 )
