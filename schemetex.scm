@@ -1,5 +1,6 @@
 (module schemetex *
 (import chicken scheme srfi-1 extras data-structures ports files)
+(begin-for-syntax (require-extension traversal))
 (use traversal nondeterminism define-structure linear-algebra irregex test AD
      srfi-13 srfi-69 shell ssax scheme2c-compatibility)
 
@@ -52,6 +53,7 @@
 ;;     if f is a function (f :: bindings -> binding), f may be nondeterministic
 ;;     binds a to f and checks that the pattern matches
 ;;     n for nullable?
+;;     nullable means that a is optional
 ;;   a ? f
 ;;   a ?n f
 ;;   a ?b f
@@ -65,6 +67,7 @@
 ;;     f must be a function (f :: (binding,bindings) -> (binding, nullable?))
 ;;     it is passed both the bindings and the potential binding, and it returns a new binding
 ;;     f may be nondeterministic and call fail if a should not be bound
+
 ;; TODO detect bad patterns and report errors
 
 ;; Replace syntax:
@@ -292,64 +295,35 @@
 
 ;;; TeX
 
-;; TODO what to do about case sensitivity? maybe make scheme->c case sensitive
 ;; TODO namespace for functions might be different from that of values
-;; TODO Allow choosing 1 or 0 indexing
-;; TODO Summation ranges should not be the same for 1 indexed and 0 indexed usage
-;;            right now it's 1-ranged but 0-indexed
-;; TODO matrix on the left
 ;; TODO auto-ranged sigma if the subscript is a number
 ;; TODO tex->local-context would also be useful
-;; TODO keyworded parameters
 ;; TODO If sum is just given a number, it should range from 1..c
-;; TODO change the meaning of function notation on the left, it's for returning a function after being given the right arguments
 ;; TODO automatic specialization for fast code
 ;; TODO T for transpose
 
-;;; min_x max_x argmin_x argmax_x
-;;; min max lists/vectors/multi-args
-
-;;; need environments
-;;; simplest version just binds variables
+;; TODO min_x max_x argmin_x argmax_x
+;; TODO min max lists/vectors/multi-args
 
 ;; Broken:
 
-;; (define *sxml* (tex:string->mathml #@"$x(y+2,x)$"))
-;; (pp (mathml->pre-expression *sxml*))
-;; In general there are issues with multiple arguments
-
-;; (define *sxml* (tex:string->mathml #@"$x(y+2)$"))
+;; (define *sxml* (tex->mathml #@"$x(y+2)$"))
 ;; (pp (mathml->pre-expression *sxml*))
 ;; So there's a question, is X a function or is this multiplication?
+;; Right now:
+;; λ> (pp (tex->lambda #@"$x(y+2)$"))
+;; (lambda (x y) (x (r-+ y 2)))
+;; λ> (pp (tex->lambda #@"$(x)(y+2)$"))
+;; (lambda (x y) (r-* x (r-+ y 2)))
+;; which is suboptimal to say the least
+;; I should reject this as ambiguous and ask for some type information
+;; For now the blanket rule is, put bracketed expressions first
+;;  or don't bracket with ()
 
 ;; x(y) vs x(y,z)
 ;; maybe I need a r-*f for these cases and let it resolve at runtime
 ;; So I need to distinguish
 ;; xy, x*y vs x(y)
-
-;; TODO  These are broken
-;; (define *sxml* (tex:string->mathml #@"$\sum_{x=1}^{100} z_{x,y}$"))
-;; (pp (mathml->pre-expression *sxml*))
-;; Not sure why
-;; r:subscript-ref-1
-;; r:subscript-ref-2
-
-;; TODO untested
-;; (define (list-whiten l)
-;;  (let* ((sigma (list-covariance l))
-;;         (j (jacobi l))
-;;         (eigenvalues (car j))
-;;         (eigenvectors (cadr j)))
-;;   (vector->list
-;;    (m*
-;;     (m*
-;;      (map list->vector eigenvectors)
-;;      (map-indexed (lambda (eigenvalue i)
-;;                    (let ((v (make-vector 0)))
-;;                     (vector-set! v i (sqrt eigenvalue))
-;;                     v))
-;;                   eigenvalues))
-;;     (list->vector l)))))
 
 (define-structure pre-expression name arguments expression)
 
@@ -438,7 +412,7 @@
        ((symbol? l) (symbol->string l))
        (else (error l))))
 
-(define (tex:string->mathml s)
+(define (tex->mathml s)
  (define (lines string) (irregex-split "\n" string))
  (define (system-output command)
   (lines (execute (list command) capture: #t))) 
@@ -463,7 +437,7 @@
                   (string-join
                    (map (lambda (s) (irregex-replace/all ";<" (irregex-replace/all ">&" s ">") "<"))
                         (read-text-file sc-file)))
-                 (lambda (in-port) (stringify (ssax:xml->sxml in-port '())))))))))))
+                 (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '())))))))))))
 
 (define (univariate-gaussian x mu sigma)
  (define (sqr x) (* x x))
@@ -764,18 +738,6 @@
  `((("msub" var sub)
     ('r-ref var sub))))
 
-(define r:subscript-combine
- `((("msub" var ("mo" sub ! ,(lambda (binding bindings)
-                              (display bindings)(newline)
-                              (list
-                               (string-upcase
-                                (string-append
-                                 (->string (second (second (assoc 'var bindings))))
-                                 "-"
-                                 (->string binding)))
-                               #f))))
-    ("mi" sub))))
-
 (define r:range
  `(((op @ ("sum" "product") ("mrow" ("mi" var) ("mo" "=") i) top ... in)
     (op ! ,(lambda (binder)
@@ -863,7 +825,6 @@
        ,r:msqrt
        ,r:subscript-ref-1
        ,r:subscript-ref-2
-       ,r:subscript-combine
        ,r:range
        ,r:map
        ,r:juxtaposition-c
@@ -918,13 +879,13 @@
    ,(ast-variables->symbols (pre-expression-expression pre-expression))))
 
 (define (tex->lambda string)
- (pre-expression->lambda (mathml->pre-expression (tex:string->mathml string))))
+ (pre-expression->lambda (mathml->pre-expression (tex->mathml string))))
 (define (tex->arguments string)
- (pre-expression-variables (mathml->pre-expression (tex:string->mathml string))))
+ (pre-expression-variables (mathml->pre-expression (tex->mathml string))))
 (define (tex-function string)
  (eval (tex->lambda string)))
 
-(define (tex:pp string) (pp (mathml->pre-expression (tex:string->mathml string))))
+(define (tex:pp string) (pp (mathml->pre-expression (tex->mathml string))))
 
 (define (find-matches p l)
  (cond ((p l) (list l))
@@ -966,54 +927,106 @@
   (lambda (form rename compare)
    (let ((%a (rename 'a)))
     `(define (,(string->symbol (string-append "r-" (symbol->string (second form)))) ,%a)
-      (let ((r (assoc (list (compact-type ,%a))
-                      ,(cons 'list (map (lambda (a) `(cons ',(reverse (cdr (reverse a))) ,(last a))) (cddr form))))))
+      (let ((r (assoc
+                (list (compact-type ,%a))
+                ,(cons 'list
+                       (map (lambda (e) `(cons ',(traversal#but-last (traversal#every-other (second e)))
+                                          ,(first e)))
+                            (cddr form))))))
        (unless r (error "unhandled types" ',(second form) (compact-type ,%a)))
        ((cdr r) ,%a)))))))
 
 (define-syntax op2
- ;; Fixme, this should generate a lookup table
  (er-macro-transformer
   (lambda (form rename compare)
    (let ((%a (rename 'a)) (%b (rename 'b)))
     `(define (,(string->symbol (string-append "r-" (symbol->string (second form)))) ,%a ,%b)
       (let ((r (assoc (list (compact-type ,%a) (compact-type ,%b))
-                      ,(cons 'list (map (lambda (a) `(cons ',(reverse (cdr (reverse a))) ,(last a))) (cddr form))))))
+                      ,(cons 'list
+                             (map (lambda (e) `(cons ',(traversal#but-last (traversal#every-other (second e)))
+                                                ,(first e)))
+                                  (cddr form))))))
        (unless r (error "unhandled types" ',(second form) (compact-type ,%a) (compact-type ,%b)))
        ((cdr r) ,%a ,%b)))))))
 
-(op1 bar (n abs) (l length) (v vector-length) (m determinant))
-(op1 double-bar (v magnitude))
-(op1 neg (n -) (v v-neg) (m m-neg))
-(op1 transpose (n identity) (v v-transpose) (m matrix-transpose))
+(define (m*v-new m v) (make-column-vector (m*v m v)))
 
-(op1 log (n log))
-(op1 lg (n log))
-(op1 ln (n log))
+(op1 bar
+     (abs           (n -> n))
+     (length        (l -> n))
+     (vector-length (v -> n))
+     (determinant   (m -> n)))
+(op1 double-bar
+     (magnitude (v -> n)))
+(op1 neg
+     (-     (n -> n))
+     (v-neg (v -> v))
+     (m-neg (m -> m)))
+(op1 transpose
+     (v-transpose      (v -> cv))
+     (v-transpose      (cv -> v))
+     (matrix-transpose (m -> m)))
 
-(op1 sin (n sin))
-(op1 cos (n sin))
-(op1 tan (n sin))
+(op1 log (log (n -> n)))
+(op1 lg  (log (n -> n)))
+(op1 ln  (log (n -> n)))
 
-(op2 + (n n +) (v v v+) (cv cv cv+) (m m m+))
-(op2 - (n n -) (v v v-) (cv cv cv-) (m m m-))
-(op2 * (n n *) (n v k*v) (v n (flip2 k*v))
-     (n cv k*cv) (cv n (flip2 k*cv))
-     (v cv v*cv) (cv v cv*v) (m m m*)
-     (m v m*v) (cv m cv*m) (n m k*m) (m n (flip2 k*m)))
-(op2 / (n n /) (m m m/)
-     (m n m/k)
-     (v n v/k) (cv n cv/k))
-(op2 expt (n n expt) (v n v-expt) (m n m-expt))
-(op2 ref (l n list-ref) (v n vector-ref) (cv n cv-vector-ref)
-     (m n vector-ref) (m v v-matrix-ref))
-(op2 sum (n p sum-n) (l p sum-l) (v p sum-v))
-(op2 product (n p product-n) (l p product-l) (v p product-v))
-(op2 = (n n =))
-(op2 > (n n >))
-(op2 < (n n <))
-(op2 >= (n n >=))
-(op2 <= (n n <=))
+(op1 sin (sin (n -> n)))
+(op1 cos (cos (n -> n)))
+(op1 tan (tan (n -> n)))
+
+(op2 +
+     (+   (n -> n -> n))
+     (v+  (v -> v -> v))
+     (cv+ (cv -> cv -> cv))
+     (m+  (m -> m -> m)))
+(op2 -
+     (-   (n -> n -> n))
+     (v-  (v -> v -> v))
+     (cv- (cv -> cv -> cv))
+     (m-  (m -> m -> m)))
+(op2 *
+     (*            (n -> n -> n))
+     (k*v          (n -> v -> v))
+     ((flip2 k*v)  (v -> n -> v))
+     (k*cv         (n -> cv -> cv))
+     ((flip2 k*cv) (cv -> n -> cv))
+     (v*cv         (v -> cv -> m))
+     (cv*v         (cv -> v -> m))
+     (m*           (m -> m -> m))
+     (m*v-new      (m -> v -> cv))
+     (cv*m         (cv -> m -> v))
+     (k*m          (n -> m -> m))
+     ((flip2 k*m)  (m -> n -> m)))
+(op2 /
+     (/    (n -> n -> n))
+     (m/   (m -> m -> m))
+     (m/k  (m -> n -> m))
+     (v/k  (v -> n -> v))
+     (cv/k (cv -> n -> cv)))
+(op2 expt
+     (expt   (n -> n -> n))
+     (v-expt (v -> n -> v))
+     (m-expt (m -> n -> m)))
+(op2 ref
+     (list-ref      (l -> n -> *))
+     (vector-ref    (v -> n -> *))
+     (cv-vector-ref (cv -> n -> *))
+     (vector-ref    (m -> n -> *))
+     (v-matrix-ref  (m -> v -> *)))
+(op2 sum
+     (sum-n (n -> p -> n))
+     (sum-l (l -> p -> n))
+     (sum-v (v -> p -> n)))
+(op2 product
+     (product-n (n -> p -> n))
+     (product-l (l -> p -> n))
+     (product-v (v -> p -> n)))
+(op2 = (= (n -> n -> b)))
+(op2 > (> (n -> n -> b)))
+(op2 < (< (n -> n -> b)))
+(op2 >= (>= (n -> n -> b)))
+(op2 <= (<= (n -> n -> b)))
 ;; TODO (op2 star (v v conv))
 
 ;; the resulting function will be parametarized by any unbound variables
@@ -1029,7 +1042,7 @@
  (er-macro-transformer
   (lambda (form rename compare)
    (let ((bound (map first (second form)))
-         (pre-expression (schemetex#mathml->pre-expression (schemetex#tex:string->mathml (third form))))
+         (pre-expression (schemetex#mathml->pre-expression (schemetex#tex->mathml (third form))))
          (%set-differencee (rename 'set-differencee)))
     `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
       (lambda ,(%set-differencee (schemetex#pre-expression-variables pre-expression) bound)
@@ -1039,7 +1052,7 @@
 (define-syntax tex-let/value
  (er-macro-transformer
   (lambda (form rename compare)
-   (let ((pre-expression (schemetex#mathml->pre-expression (schemetex#tex:string->mathml (third form)))))
+   (let ((pre-expression (schemetex#mathml->pre-expression (schemetex#tex->mathml (third form)))))
     `(let ,(map (lambda (l) (list (first l) (second l))) (second form))
       ,(schemetex#ast-variables->symbols (schemetex#pre-expression-expression pre-expression)))))))
 )
