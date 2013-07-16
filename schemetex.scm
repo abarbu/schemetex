@@ -1,6 +1,7 @@
 (module schemetex *
 (import chicken scheme srfi-1 extras data-structures ports files)
-(begin-for-syntax (require-extension traversal))
+(begin-for-syntax (require 'traversal))
+(import-for-syntax traversal)
 (use traversal nondeterminism define-structure linear-algebra irregex test AD
      srfi-13 srfi-69 shell ssax scheme2c-compatibility)
 
@@ -334,8 +335,10 @@
 (define *tex:string-mathmode-regexp* "^\\s*\\$(.*)\\s*\\$ *$")
 (define (tex:string-mathmode? s) (irregex-match *tex:string-mathmode-regexp* s))
 
-(define (tex:string-strip-mathmode s) 
- (irregex-match-substring (irregex-search *tex:string-mathmode-regexp* s) 1))
+(define (tex:string-strip-mathmode s)
+ (let ((match (irregex-search *tex:string-mathmode-regexp* s)))
+  (unless match (error "TeX must start with #@\"$ and end with $\" in" s))
+  (irregex-match-substring match 1)))
 
 (define (find-matches p l)
  (cond ((p l) (list l))
@@ -385,8 +388,6 @@
                         (read-text-file sc-file)))
                  (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '())))))))))))
 
-(define (mark-local-variable string) (conc "$" string))
-
 ;;; AST operations
 
 (define (pre1-expression-variables expression)
@@ -398,16 +399,20 @@
                          (equal? (car a) "mi")))
                      expression))))
 
-;; This clears out the "mi" markets for local variables
+;; This resolves the scope of variables and binds them
+;; but leaves unbound variables unchanged
 (define (expression-bind-variables e binders)
  (let ((binders
         (if (and (list? e) (= (length e) 3)
                (equal? (first e) 'lambda) (not (null? (second e))))
-            (append (second e) binders)
+            ;; map second extracts the variables from ("mi" x)
+            (append (map (lambda (v) (cons (second v) (gensym (second v))))
+                         (second e))
+                    binders)
             binders)))
   (cond ((and (list? e) (= (length e) 2) (equal? (car e) "mi")
-            (member (string->symbol (mark-local-variable (second e))) binders))
-         (string->symbol (mark-local-variable (second e))))
+            (assoc (second e) binders))
+         (cdr (assoc (second e) binders)))
         ((list? e)
          (map (lambda (e) (expression-bind-variables e binders)) e))
         (else e))))
@@ -558,8 +563,7 @@
                                (symbol? binding)))
             ... args2)
         ... post)
-     (t pre ('r-* (i1 args1) (i2 args2)) post))
-    )
+     (t pre ('r-* (i1 args1) (i2 args2)) post)))
   r:single-mrow/bracket))
 
 (define r:subsup
@@ -741,7 +745,7 @@
             (cond ((equal? binder "sum") 'r-sum)
                   ((equal? binder "product") 'r-product)
                   (else (error "fuck-up"))))
-        ('range i top) ('lambda (var ! ,(o string->symbol mark-local-variable)) in)))
+        ('range i top) ('lambda (("mi" var)) in)))
    single))
 
 (define r:map
@@ -751,7 +755,7 @@
                   ((equal? binder "product") 'r-product)
                   (else (error "fuck-up"))))
         ("mi" var)
-        ('lambda (var ! ,(o string->symbol mark-local-variable)) in)))
+        ('lambda (("mi" var)) in)))
    single))
 
 (define r:boolean
@@ -823,9 +827,9 @@
        (pre1-expression-variables (cddr (second tree)))
        (expression-bind-variables
         (match-replace-staging after (cons "(" (cddr tree))) '()))
-      (make-expression (gensym "tex:") '() 
-                           (expression-bind-variables
-                            (match-replace-staging after tree) '())))))
+      (make-expression (gensym "tex") '() 
+                       (expression-bind-variables
+                        (match-replace-staging after tree) '())))))
 
 ;;; API
 
@@ -922,7 +926,7 @@
       (let ((r (assoc
                 (list (compact-type ,%a))
                 ,(cons 'list
-                       (map (lambda (e) `(cons ',(traversal#but-last (traversal#every-other (second e)))
+                       (map (lambda (e) `(cons ',(but-last (every-other (second e)))
                                           ,(first e)))
                             (cddr form))))))
        (unless r (error "unhandled types" ',(second form) (compact-type ,%a)))
@@ -935,7 +939,7 @@
     `(define (,(string->symbol (string-append "r-" (symbol->string (second form)))) ,%a ,%b)
       (let ((r (assoc (list (compact-type ,%a) (compact-type ,%b))
                       ,(cons 'list
-                             (map (lambda (e) `(cons ',(traversal#but-last (traversal#every-other (second e)))
+                             (map (lambda (e) `(cons ',(but-last (every-other (second e)))
                                                 ,(first e)))
                                   (cddr form))))))
        (unless r (error "unhandled types" ',(second form) (compact-type ,%a) (compact-type ,%b)))
