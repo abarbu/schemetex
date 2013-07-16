@@ -23,9 +23,7 @@ help:
 	@echo "Type 'make blahtex-mac' to make blahtex for Mac"
 	@echo "Type 'make blahtexml-mac' to make blahtexml for Mac"
 
-SOURCES = \
-	Source/main.cpp \
-	Source/mainPng.cpp \
+SOURCES_LIB = \
 	Source/md5.c \
 	Source/md5Wrapper.cpp \
 	Source/Messages.cpp \
@@ -42,12 +40,16 @@ SOURCES = \
 	Source/BlahtexCore/MathmlNode.cpp \
 	Source/BlahtexCore/XmlEncode.cpp
 
+SOURCES = $(SOURCES_LIB) \
+	Source/main.cpp \
+	Source/mainPng.cpp
+
 SOURCES_XMLIN = $(SOURCES) \
 	Source/BlahtexXMLin/AttributesImpl.cpp \
 	Source/BlahtexXMLin/BlahtexFilter.cpp \
 	Source/BlahtexXMLin/SAX2Output.cpp \
 	Source/BlahtexXMLin/XercesString.cpp
-	
+
 HEADERS = \
 	Source/mainPng.h \
 	Source/md5.h \
@@ -80,6 +82,8 @@ BINDIR_XMLIN = bin-blahtexml
 $(BINDIR_XMLIN):
 	mkdir -p $(BINDIR_XMLIN)
 
+OBJECTS_LIB = $(addprefix $(BINDIR)/, $(notdir $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCES_LIB)))))
+
 OBJECTS = $(addprefix $(BINDIR)/, $(notdir $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCES)))))
 
 OBJECTS_XMLIN = $(addprefix $(BINDIR_XMLIN)/, $(notdir $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCES_XMLIN)))))
@@ -93,7 +97,7 @@ $(BINDIR)/InputSymbolTranslation.o: InputSymbolTranslation.cpp InputSymbolTransl
 
 $(BINDIR_XMLIN)/InputSymbolTranslation.o: InputSymbolTranslation.cpp InputSymbolTranslation.inc
 
-CFLAGS = -O2
+CFLAGS = -g3 -fPIC -O2
 
 VPATH = Source:Source/BlahtexCore:Source/BlahtexXMLin
 
@@ -122,6 +126,9 @@ blahtexml-linux:  $(BINDIR_XMLIN) $(OBJECTS_XMLIN)  $(HEADERS_XMLIN)
 
 blahtexml-mac: $(BINDIR_XMLIN) $(OBJECTS_XMLIN)  $(HEADERS_XMLIN)
 	$(CXX) $(CFLAGS) -o blahtexml -liconv $(OBJECTS_XMLIN) -lxerces-c
+
+libblahtex.a: $(BINDIR) $(OBJECTS_LIB)  $(HEADERS)
+	ar cr libblahtex.a $(OBJECTS_LIB)
 
 clean:
 	rm -f blahtex $(OBJECTS) blahtexml $(OBJECTS_XMLIN)

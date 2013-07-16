@@ -1,9 +1,15 @@
 (module schemetex *
-(import chicken scheme srfi-1 extras data-structures ports files)
+(import chicken scheme srfi-1 extras data-structures ports files foreign)
 (begin-for-syntax (require 'traversal))
 (import-for-syntax traversal)
 (use traversal nondeterminism define-structure linear-algebra irregex test AD
      srfi-13 srfi-69 shell ssax scheme2c-compatibility)
+
+#>
+char *texToMathML(char *inputUtf8);
+<#
+
+(define blahtex (foreign-lambda c-string "texToMathML" c-string))
 
 ;; belongs in traversal
 
@@ -371,22 +377,16 @@
       (call-with-output-file pathname
        (lambda (port)
         (for-each (lambda (line) (display line port) (newline port)) lines)))))
- (let ((tex-file (create-temporary-file "tex"))
-       (sc-file (create-temporary-file "sc")))
-  (write-text-file (list (tex:string-strip-mathmode s)) tex-file)
-  (system
-   (format #f "blahtex --mathml --mathml-encoding long --disallow-plane-1 --indented --spacing relaxed < ~a > ~a"
-           tex-file sc-file))
-  (sxml:map (lambda _ #f) "@"
+ (sxml:map (lambda _ #f) "@"
+           (second
             (second
              (second
               (second
-               (second
-                (call-with-input-string
-                  (string-join
-                   (map (lambda (s) (irregex-replace/all ";<" (irregex-replace/all ">&" s ">") "<"))
-                        (read-text-file sc-file)))
-                 (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '())))))))))))
+               (call-with-input-string
+                 (string-join
+                  (map (lambda (s) (irregex-replace/all ";<" (irregex-replace/all ">&" s ">") "<"))
+                       (lines (blahtex (tex:string-strip-mathmode s)))))
+                (lambda (in-port) (stringify (ssax#ssax:xml->sxml in-port '()))))))))))
 
 ;;; AST operations
 

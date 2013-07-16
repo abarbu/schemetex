@@ -19,6 +19,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <sstream>
 #include "Interface.h"
 #include "MathmlNode.h"
+#include "UnicodeConverter.h"
+#include "Misc.h"
+#include <stdlib.h>
+#include <string.h>
+#include <iostream>
+#include <stdexcept>
 
 using namespace std;
 
@@ -58,6 +64,64 @@ void Interface::PrintAsSAX2(ContentHandler& sax, const wstring& prefix, bool ign
 }
 #endif
 
+}
+
+// Imported from Messages.cpp:
+extern wstring GetErrorMessage(const blahtex::Exception& e);
+extern wstring GetErrorMessages();
+
+using namespace blahtex;
+// this is the equivalent of
+//   blahtex --mathml --mathml-encoding long --disallow-plane-1 --indented --spacing relaxed
+extern "C" char *texToMathML(char *inputUtf8) {
+  blahtex::Interface interface;
+  // --disallow-plane-1
+  interface.mMathmlOptions.mAllowPlane1 = false;
+  interface.mEncodingOptions.mAllowPlane1 = false;
+  // --indented
+  interface.mIndented = true;
+  // --mathml-encoding long
+  interface.mEncodingOptions.mMathmlEncoding = EncodingOptions::cMathmlEncodingLong;
+  // --spacing relaxed
+  interface.mMathmlOptions.mSpacingControl = MathmlOptions::cSpacingControlRelaxed;
+  // --mathml
+  UnicodeConverter gUnicodeConverter;
+  gUnicodeConverter.Open();
+  wstring input = gUnicodeConverter.ConvertIn(inputUtf8);
+  string outputUtf8;
+  try {
+    interface.ProcessInput(input, false);
+    wostringstream mathmlOutput;
+    // could simplify this output but then it would not be compatible
+    // with the commandline tool anymore
+    mathmlOutput << L"<blahtex>\n" << L"<mathml>\n" << L"<markup>\n";
+    mathmlOutput << interface.GetMathml();
+    if (!interface.mIndented)
+      mathmlOutput << L"\n";
+    mathmlOutput << L"</markup>\n" << L"</mathml>\n" << L"</blahtex>\n";
+    outputUtf8 = gUnicodeConverter.ConvertOut(mathmlOutput.str());
+  }
+  catch (blahtex::Exception& e) {
+    outputUtf8 = "error (" + gUnicodeConverter.ConvertOut(e.GetCode()) + ") " + gUnicodeConverter.ConvertOut(GetErrorMessage(e));
+  }
+  // The following errors might occur if there's a bug in blahtex that
+  // some assertion condition picked up. We still want to report these
+  // nicely to the user so that they can notify the developers.
+  catch (std::logic_error& e) {
+    outputUtf8 = "error (logic_error)";
+    outputUtf8 += e.what();
+  }
+  // These kind of errors should only occur if the program has been
+  // installed incorrectly.
+  catch (std::runtime_error& e) {
+    outputUtf8 = "error (runtime_error)";
+    outputUtf8 += e.what();
+  }
+  int len = outputUtf8.length();
+  char *result = (char*)malloc(len+1);
+  memcpy(result, outputUtf8.c_str(), len);
+  result[len] = 0;
+  return result;
 }
 
 // end of file @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

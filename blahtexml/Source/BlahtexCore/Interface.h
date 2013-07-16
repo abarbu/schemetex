@@ -81,6 +81,9 @@ public:
 
 }
 
+// a simple interface for schemetex
+extern "C" char *texToMathML(char *inputUtf8);
+
 #endif
 
 // end of file @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

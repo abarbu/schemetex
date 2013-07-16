@@ -24,6 +24,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <stdlib.h>
 #include <sstream>
 #include <stdexcept>
+#include <unistd.h>
 
 using namespace std;
 using namespace blahtex;

@@ -2,28 +2,74 @@
 
 This is early work in progress. It allows you to write inline TeX
 equations which get compiled to Scheme functions. Try out emacs and
-org-preview-latex if you're going to use this module, it renders the
-TeX inside your buffer making is especially easy to read.
+org-preview-latex if you're going to use this egg, it renders the TeX
+inside your buffer making is especially pleasant to read.
+
+This module defines a reader macro #@"$...$". This is because
+charactere escaping is performed differently in TeX than in
+Scheme. Dollar signs are present to allow 'org-preview-latex' to find
+and render the inline LaTeX.
+
+For example
+
+  (tex #@"$\frac{1}{\sqrt{(2\pi)\sigma}}e^{-\frac{1}{2}\frac{x-\mu}{\sigma}}$")
+
+which renders as
+
+[[File:http://chart.apis.google.com/chart?chf=bg,s,fffff0&cht=tx&chl=%5Cfrac%7B1%7D%7B%5Csqrt%7B(2%5Cpi)%5Csigma%7D%7De%5E%7B-%5Cfrac%7B1%7D%7B2%7D%5Cfrac%7Bx-%5Cmu%7D%7B%5Csigma%7D%7D|gaussian pdf]]
+
+will compile to
+
+  (lambda (x mu sigma)
+     (r-/ (exp (r-neg (r-/ (r-/ (r-- x mu) sigma) 2)))
+          (sqrt (r-* (r-* 2 pi) sigma))))
+
+Unbound variables are turned into arguments and the argument order is
+the same as the occurence of the unbound variables in the TeX
+string. Functions starting with ''r-'' are generic functions that
+operate over various types, the idea being that you should be able to
+pass in input (numbers, lists, vectors, matrices) that is reasonable
+given the equation and get the right answer. This means that the
+generated code is slower than code written by hand because of all of
+the type checks. One day this egg will do type inference to produce
+better code. For longer equations you'll likely want to specify the
+arugment order:
+
+  (tex #@"$f(x,y)=\sum_x\{x^2+y^3\}$")
+
+The ''f'' is entirely ignored, but one day this syntax will allow for
+recursive and mutually recursive functions. For even more interesting
+equations you can use
+
+:(tex-let ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
+:(tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
+
+which allow you to bind variables which ends up being much cleaner.
+
+=== Interface ===
 
 :(tex #@"$TeX$")
-:(tex-hash #@"$TeX$")
 
-This is the basic interface, it currently performs the conversion at
-runtime, although there's no reason why this couldn't be done at
-compile time. You're better off using tex-hash as the conversion can
-be expensive for more complex expressions. This module defines a
-reader macro #@"$...$". This is because charactere escaping is
-performed differently in TeX than in scheme. Dollar signs are present
-to allow 'org-preview-latex' to find and render the inline LaTeX.
+This is the basic interface. It compiles the TeX to Scheme at
+compile-time. For complex TeX equations with many parameters see
+''tex-lex''.
 
-:(tex #@"$\sum_x\{x^2+y^3\}$")
+:(tex-let ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
 
-Will for example return a function that takes two arguments, 'x' and
-'y',
+Binds ''x'' and produces a function with one argument ''y'' because
+''y'' is unbound. If you want to produce a value instead of a function
+see ''tex-let/value''.
 
-:(tex->lambda #@"TeX")
+:(tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
 
-This will return the code produced for a particular TeX string.
+Expands to code which produces a value instead of a function. Note
+that ''y'' here is unbound and will be captured from the enclosing
+scope.
+
+:(tex->lambda #@"$TeX$")
+
+This will return the code produced for a particular TeX
+equation. 
 
 === License ===
 
