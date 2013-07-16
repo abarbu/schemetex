@@ -4,11 +4,11 @@
 
 (verify-extension-name "schemetex")
 
-(run ("cd blahtexml; make libblahtex.a"))
+(run ("cd packages/blahtexml; make libblahtex.a"))
 
 (setup-shared-extension-module 'schemetex (extension-version "0.1")
   #:inline? #t #:types? #t
   #:compile-options '(-O3 -keep-shadowed-macros -d2
                           -C -Wall -C -Wno-unused-but-set-variable
                           -C -Wno-unused-variable -lstdc++
-                          blahtexml/libblahtex.a))
+                          packages/blahtexml/libblahtex.a))
