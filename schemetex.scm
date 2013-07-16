@@ -10,7 +10,7 @@
 char *texToMathML(char *inputUtf8);
 <#
 
-(define blahtex (foreign-lambda c-string "texToMathML" c-string))
+(define blahtex (foreign-lambda c-string* "texToMathML" c-string))
 
 ;; belongs in traversal
 
