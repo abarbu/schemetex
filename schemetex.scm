@@ -2,8 +2,9 @@
 (import chicken scheme srfi-1 extras data-structures ports files foreign)
 (begin-for-syntax (require 'traversal))
 (import-for-syntax traversal)
-(use traversal nondeterminism define-structure linear-algebra irregex test AD
+(use traversal nondeterminism define-structure linear-algebra irregex AD
      srfi-13 srfi-69 shell ssax scheme2c-compatibility)
+(reexport linear-algebra nondeterminism)
 
 #>
 char *texToMathML(char *inputUtf8);

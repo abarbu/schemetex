@@ -1,3 +1,4 @@
+(use schemetex test)
 
 (define (multivariate-gaussian-pdf x mu Sigma)
  (let ((n (vector-length Sigma)))
@@ -164,3 +165,6 @@
  (test "piecewise 2" 8 ((tex #@"$f(x,y,z,k)=\begin{cases} x & k=0 \\ y & k=1 \\ z & \text{otherwise} \end{cases}$") 6 7 8 2))
  (test "call-grouping 0" 4 ((tex #@"$f(w,i-b)$") (lambda (a b) (+ a b)) 3 2 1))
  (test "call-grouping 1" 6 ((tex #@"$f(wi-b)$") (lambda (a) (+ a 1)) 3 2 1)))
+
+(test-exit)
+
