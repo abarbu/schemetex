@@ -608,7 +608,7 @@ char *texToMathML(char *inputUtf8);
 
 (define r:exp
  `((("expt" ("mi" "e") a)
-    ('exp a))
+    ('r-exp a))
    (("expt" a b)
     ('r-expt a b))
    single))
@@ -746,7 +746,7 @@ char *texToMathML(char *inputUtf8);
             (cond ((equal? binder "sum") 'r-sum)
                   ((equal? binder "product") 'r-product)
                   (else (error "fuck-up"))))
-        ('range i top) ('lambda (("mi" var)) in)))
+        ('r-range i top) ('lambda (("mi" var)) in)))
    single))
 
 (define r:map
@@ -970,6 +970,8 @@ char *texToMathML(char *inputUtf8);
 (op1 cos (cos (n -> n)))
 (op1 tan (tan (n -> n)))
 
+(op1 exp (exp (n -> n)))
+
 (op2 +
      (+   (n -> n -> n))
      (v+  (v -> v -> v))
@@ -1010,19 +1012,20 @@ char *texToMathML(char *inputUtf8);
      (vector-ref    (m -> n -> *))
      (v-matrix-ref  (m -> v -> *)))
 (op2 sum
-     (sum-n (n -> p -> n))
-     (sum-l (l -> p -> n))
-     (sum-v (v -> p -> n)))
+     (sum-n (n -> (n -> n) -> n))
+     (sum-l (l -> (n -> n) -> n))
+     (sum-v (v -> (n -> n) -> n)))
 (op2 product
-     (product-n (n -> p -> n))
-     (product-l (l -> p -> n))
-     (product-v (v -> p -> n)))
+     (product-n (n -> (n -> n) -> n))
+     (product-l (l -> (n -> n) -> n))
+     (product-v (v -> (n -> n) -> n)))
 (op2 = (= (n -> n -> b)))
 (op2 > (> (n -> n -> b)))
 (op2 < (< (n -> n -> b)))
 (op2 >= (>= (n -> n -> b)))
 (op2 <= (<= (n -> n -> b)))
 ;; TODO (op2 star (v v conv))
+(op2 range (range (n -> n -> l)))
 
 ;; the resulting function will be parametarized by any unbound variables
 (define-syntax tex

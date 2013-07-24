@@ -11,7 +11,7 @@ org-preview-latex if you're going to use this egg, it renders the TeX
 inside your buffer making is especially pleasant to read.
 
 This module defines a reader macro #@"$...$". This is because
-charactere escaping is performed differently in TeX than in
+character escaping is performed differently in TeX than in
 Scheme. Dollar signs are present to allow 'org-preview-latex' to find
 and render the inline LaTeX.
 
@@ -21,7 +21,7 @@ For example
 
 which renders as
 
-[[image:http://chart.apis.google.com/chart?chf=bg,s,fffff0&cht=tx&chl=%5Cfrac%7B1%7D%7B%5Csqrt%7B(2%5Cpi)%5Csigma%7D%7De%5E%7B-%5Cfrac%7B1%7D%7B2%7D%5Cfrac%7Bx-%5Cmu%7D%7B%5Csigma%7D%7D|gaussian pdf]]
+[[image:http://chart.apis.google.com/chart?chf=bg,s,FFFFFF000&cht=tx&chl=%5Cfrac%7B1%7D%7B%5Csqrt%7B(2%5Cpi)%5Csigma%7D%7De%5E%7B-%5Cfrac%7B1%7D%7B2%7D%5Cfrac%7Bx-%5Cmu%7D%7B%5Csigma%7D%7D|gaussian pdf]]
 
 will compile to
 
