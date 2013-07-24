@@ -594,6 +594,10 @@ char *texToMathML(char *inputUtf8);
     ('r-bar a))
    (("DoubleVerticalBar" a)
     ('r-double-bar a))
+   (("LeftFloor" a)
+    ('r-floor a))
+   (("LeftCeiling" a)
+    ('r-ceiling a))
    (("msup" a b)
     ("expt" a b))))
 
@@ -951,6 +955,10 @@ char *texToMathML(char *inputUtf8);
      (length        (l -> n))
      (vector-length (v -> n))
      (determinant   (m -> n)))
+(op1 floor
+     (floor (n -> n)))
+(op1 ceiling
+     (ceiling (n -> n)))
 (op1 double-bar
      (magnitude (v -> n)))
 (op1 neg
