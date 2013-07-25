@@ -9,7 +9,7 @@
  (synopsis "Run your equations")
  (depends setup-helper define-structure traversal
           nondeterminism linear-algebra AD shell ssax
-          scheme2c-compatibility)
+          scheme2c-compatibility nlopt)
  (test-depends test)
  (files "schemetex.meta" 
         "schemetex.release-info"

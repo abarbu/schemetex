@@ -3,7 +3,7 @@
 (begin-for-syntax (require 'traversal))
 (import-for-syntax traversal)
 (use traversal nondeterminism define-structure linear-algebra irregex AD
-     srfi-13 srfi-69 shell ssax scheme2c-compatibility)
+     srfi-13 srfi-69 shell ssax scheme2c-compatibility nlopt)
 (reexport linear-algebra nondeterminism)
 
 #>
@@ -100,6 +100,10 @@ char *texToMathML(char *inputUtf8);
 ;;  where f is a function (f :: (binding ->)+ bindings)
 ;;  will be passed the binding for a (or the other variables) and will output the result of f
 ;;  this will splice the output f of into the tree
+
+;; Rule options:
+;; single
+;; Don't run this until a fixpoint, just apply it once
 
 (define (tree-pattern:present? variable bindings) (assoc variable bindings))
 (define (tree-pattern:binding variable bindings) (second (assoc variable bindings)))
@@ -736,9 +740,11 @@ char *texToMathML(char *inputUtf8);
 
 (define r:subscript-ref-1
  `((("msub" var
-     ("mrow" ("mi" sub1) ("mo" ",") ... sub))
-    ("msub" ('r-ref var ("mi" sub1))
-     ("mrow" sub)))))
+     ("mrow" sub1 ("mo" ",") ... sub))
+    ("msub" ('r-ref var sub1)
+     ("mrow" sub)))
+   (("msub" var ("mrow" sub))
+    ('r-ref var sub))))
 
 (define r:subscript-ref-2
  `((("msub" var sub)
@@ -786,6 +792,18 @@ char *texToMathML(char *inputUtf8);
  `((("mtr" ("mtd" val) ("mtd" test))
     (test val))))
 
+(define r:max/min-extent
+ `(((... pre ("msub" ("mo" op @ ("max" "min" "argmax" "argmin")) sub) ... in)
+    (pre (op sub ("mrow" in))))))
+
+(define r:max/min
+ `(((op @ ("max" "min" "argmax" "argmin")
+          arg
+          ("mrow" in))
+    (op ! ,(o string->symbol (lambda (s) (conc "r-" s)))
+        ("mi" var)
+        ('lambda (("mi" var)) in)))))
+
 (define (mathml->expression mathml)
  (let*
    ((before
@@ -794,6 +812,7 @@ char *texToMathML(char *inputUtf8);
        ,r:mstyle
        ,r:floating-point
        ,r:brackets-subscripts/superscripts
+       ,r:max/min-extent
        ,r:sum/prod-1
        ,r:sum/prod-2
        ,r:sum/prod-3
@@ -807,8 +826,6 @@ char *texToMathML(char *inputUtf8);
     (after
      `(,r:subsup
        ,r:msqrt
-       ,r:subscript-ref-1
-       ,r:subscript-ref-2
        ,r:range
        ,r:map
        ,r:juxtaposition-c
@@ -820,7 +837,10 @@ char *texToMathML(char *inputUtf8);
        ,r:numbers
        ,r:single-mrow/bracket
        ,r:stability
-       ,r:calls))
+       ,r:calls
+       ,r:max/min
+       ,r:subscript-ref-1
+       ,r:subscript-ref-2))
     (tree (match-replace-staging 
            before
            (number-all-brackets (match-replace-staging  
@@ -1020,13 +1040,13 @@ char *texToMathML(char *inputUtf8);
      (vector-ref    (m -> n -> *))
      (v-matrix-ref  (m -> v -> *)))
 (op2 sum
-     (sum-n (n -> (n -> n) -> n))
-     (sum-l (l -> (n -> n) -> n))
-     (sum-v (v -> (n -> n) -> n)))
+     (sum-n (n -> p -> n))
+     (sum-l (l -> p -> n))
+     (sum-v (v -> p -> n)))
 (op2 product
-     (product-n (n -> (n -> n) -> n))
-     (product-l (l -> (n -> n) -> n))
-     (product-v (v -> (n -> n) -> n)))
+     (product-n (n -> p -> n))
+     (product-l (l -> p -> n))
+     (product-v (v -> p -> n)))
 (op2 = (= (n -> n -> b)))
 (op2 > (> (n -> n -> b)))
 (op2 < (< (n -> n -> b)))
@@ -1035,6 +1055,24 @@ char *texToMathML(char *inputUtf8);
 ;; TODO (op2 star (v v conv))
 (op2 range (range (n -> n -> l)))
 
+(define-structure schemetex-optimizer discrete? initial-value)
+
+(define (r-max&arg obj p)
+ (unless (schemetex-optimizer? obj) (error "Need a schemetex-optimizer structure"))
+ (when (schemetex-optimizer-discrete? obj) (error "Discrete optimization is not yet supported"))
+ (define (maximize-with-nlopt f g i)
+  (nlopt:optimize
+   nlopt:ln-sbplx
+   i
+   (lambda (opt)
+    (nlopt:set-max-objective opt (lambda (x g?) (vector (f x) (if g? ((g f) x)))))
+    (nlopt:set-xtol-rel opt 1e-4))))
+ (maximize-with-nlopt p gradient-R (schemetex-optimizer-initial-value obj)))
+(define (r-max obj p) (first (r-max&arg obj p)))
+(define (r-min obj p) (r-max obj (lambda (a) (- (p a)))))
+(define (r-argmax obj p) (second (r-max&arg obj p)))
+(define (r-argmin obj p) (second (r-max&arg obj (lambda (a) (- (p a))))))
+ 
 ;; the resulting function will be parametarized by any unbound variables
 (define-syntax tex
  (er-macro-transformer
