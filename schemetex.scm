@@ -798,11 +798,11 @@ char *texToMathML(char *inputUtf8);
 
 (define r:max/min
  `(((op @ ("max" "min" "argmax" "argmin")
-          arg
-          ("mrow" in))
+          var
+          ("mrow" ... in))
     (op ! ,(o string->symbol (lambda (s) (conc "r-" s)))
-        ("mi" var)
-        ('lambda (("mi" var)) in)))))
+        var
+        ('lambda (var) in)))))
 
 (define (mathml->expression mathml)
  (let*
@@ -835,10 +835,10 @@ char *texToMathML(char *inputUtf8);
        ,r:piecewise-2
        ,r:exp
        ,r:numbers
+       ,r:max/min
        ,r:single-mrow/bracket
        ,r:stability
        ,r:calls
-       ,r:max/min
        ,r:subscript-ref-1
        ,r:subscript-ref-2))
     (tree (match-replace-staging 
@@ -1055,24 +1055,6 @@ char *texToMathML(char *inputUtf8);
 ;; TODO (op2 star (v v conv))
 (op2 range (range (n -> n -> l)))
 
-(define-structure schemetex-optimizer discrete? initial-value)
-
-(define (r-max&arg obj p)
- (unless (schemetex-optimizer? obj) (error "Need a schemetex-optimizer structure"))
- (when (schemetex-optimizer-discrete? obj) (error "Discrete optimization is not yet supported"))
- (define (maximize-with-nlopt f g i)
-  (nlopt:optimize
-   nlopt:ln-sbplx
-   i
-   (lambda (opt)
-    (nlopt:set-max-objective opt (lambda (x g?) (vector (f x) (if g? ((g f) x)))))
-    (nlopt:set-xtol-rel opt 1e-4))))
- (maximize-with-nlopt p gradient-R (schemetex-optimizer-initial-value obj)))
-(define (r-max obj p) (first (r-max&arg obj p)))
-(define (r-min obj p) (r-max obj (lambda (a) (- (p a)))))
-(define (r-argmax obj p) (second (r-max&arg obj p)))
-(define (r-argmin obj p) (second (r-max&arg obj (lambda (a) (- (p a))))))
- 
 ;; the resulting function will be parametarized by any unbound variables
 (define-syntax tex
  (er-macro-transformer
