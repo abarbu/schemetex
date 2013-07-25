@@ -721,7 +721,8 @@ char *texToMathML(char *inputUtf8);
     ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e ,@sep j ,@sep k) ... post)
      (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k)) post))
     ((... pre ("mi" f) ("(" ..@ (("mo" ",")) a ,@sep b ,@sep c ,@sep d ,@sep e ,@sep j ,@sep k ,@sep l) ... post)
-     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k) ("mrow" l)) post)))))
+     (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k) ("mrow" l)) post))
+    single)))
 
 (define r:call-sup
  (map (lambda (exp)
