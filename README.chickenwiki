@@ -109,8 +109,7 @@ versions.
 The type system is intentionally pretty simple and intended to allow
 heterogenous collections. There are a only a small number of builtin types:
 
-  n         inexact
-  i         exact
+  n         number
   l         list
   v         vector
   m         matrix
