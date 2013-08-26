@@ -724,12 +724,25 @@ char *texToMathML(char *inputUtf8);
      (pre ("call" ("mi" f) ("mrow" a) ("mrow" b) ("mrow" c) ("mrow" d) ("mrow" e) ("mrow" j) ("mrow" k) ("mrow" l)) post))
     single)))
 
+;; superscript: f(x)^2
 (define r:call-sup
  (map (lambda (exp)
-       (let ((s (gensym "s")))
-        (list (list-update (first exp) 3 (lambda (l) (list "msup" l s)))
-              (list-update (second exp) 1 (lambda (l) (list "msup" l s))))))
+       (if (list? exp)
+           (let ((s (gensym "s")))
+            (list (list-update (first exp) 3 (lambda (l) (list "msup" l s)))
+                  (list-update (second exp) 1 (lambda (l) (list "msup" l s)))))
+           exp))
       r:call))
+
+;; subscript: f_y(x)
+(define r:call-sub
+ (map (lambda (exp)
+       (if (list? exp)
+           (let ((s (gensym "s")))
+            (list (list-update (first exp) 3 (lambda (l) (list "msub" l '... s)))
+                  (list-update (second exp) 1 (lambda (l) (list "msub" l s)))))
+           exp))
+      (append r:call r:call-sup)))
 
 (define r:call=
  `(((... pre ("call" ("mi" f) ... args) ("mo" "=") ... post)
@@ -805,7 +818,7 @@ char *texToMathML(char *inputUtf8);
         var
         ('lambda (var) in)))))
 
-(define (mathml->expression mathml)
+(define (mathml->expression mathml #!optional (bare? #f))
  (let*
    ((before
      `(,r:hat
@@ -822,6 +835,7 @@ char *texToMathML(char *inputUtf8);
        ,r:unary-2
        ,r:call
        ,r:call-sup
+       ,r:call-sub
        ,r:call=
        ,r:single-mrow/bracket))
     (after
@@ -847,18 +861,22 @@ char *texToMathML(char *inputUtf8);
            (number-all-brackets (match-replace-staging  
                                  (list r:piecewise-1)
                                  mathml)))))
-  (if (possibly? (pattern-match '("assign" ("call" ("mi" f) ... args) ... post) tree '()))
-      (make-expression
-       (second (second (second tree)))
-       (pre1-expression-variables (cddr (second tree)))
-       (expression-bind-variables
-        (match-replace-staging after (cons "(" (cddr tree))) '()))
-      (make-expression (gensym "tex") '() 
-                       (expression-bind-variables
-                        (match-replace-staging after tree) '())))))
+  (if bare?
+      (match-replace-staging after tree)
+      (if (possibly? (pattern-match '("assign" ("call" ("mi" f) ... args) ... post) tree '()))
+          (make-expression
+           (second (second (second tree)))
+           (pre1-expression-variables (cddr (second tree)))
+           (expression-bind-variables
+            (match-replace-staging after (cons "(" (cddr tree))) '()))
+          (make-expression (gensym "tex") '() 
+                           (expression-bind-variables
+                            (match-replace-staging after tree) '()))))))
 
 ;;; API
 
+(define (tex->code tex)
+ (ast-variables->symbols (expression-body (mathml->expression (tex->mathml tex)))))
 (define (tex->lambda string)
  (expression->lambda (mathml->expression (tex->mathml string))))
 (define (tex->arguments string)

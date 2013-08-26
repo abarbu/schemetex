@@ -92,7 +92,7 @@
           (list-ref      (l -> n -> star))
           (vector-ref    (v -> n -> star))
           (cv-vector-ref (cv -> n -> star))
-          (vector-ref    (m -> n -> star))
+          (vector-ref    (m -> n -> v))
           (v-matrix-ref  (m -> v -> star)))
          (sum
           (sum-n (n -> (n -> n) -> n))
@@ -263,7 +263,7 @@
 
 (define (variable-polymorphic? v) (not (= (length (alt-list (var-type v))) 1)))
 
-(define (specialize expr mapping builtins allow-polymorphic-variables?)
+(define (specialize-expression expr mapping builtins allow-polymorphic-variables?)
  (deep-map var?
            (lambda (v)
             (if (assoc (var-name v) mapping)
@@ -284,7 +284,7 @@
 (define (tex->code tex)
  (ast-variables->symbols (expression-body (mathml->expression (tex->mathml tex)))))
 
-(define (type-inference expr return-type bindings builtins)
+(define (type-inference expr return-type bindings builtins #!optional (debugging #f))
  (let* ((a (polymorphic-types expr builtins))
         (variables (append bindings (first a)))
         (expr (second a))
@@ -293,7 +293,27 @@
         (variables (first b))
         (constraints (second b))
         (expr (begin
-               (solve-constraints! variables constraints)
+               (let loop ()
+                (solve-constraints! variables constraints)
+                ((call/cc
+                  (lambda (k)
+                   (for-each (lambda (v)
+                              (let ((m (assoc (var-name v) mapping)))
+                               (when (and (alt? (var-type v))
+                                        (> (length (alt-list (var-type v))) 1)
+                                        m
+                                        (equal? (cdr m) 'r-ref))
+                                (let ((updated-type
+                                       (remove-if (lambda (t)
+                                                   (and (not (equal? (third (third t)) 'star))
+                                                      (not (equal? (second t) (third (third t))))))
+                                                  (alt-list (var-type v)))))
+                                 (when (and (not (equal? updated-type (alt-list (var-type v))))
+                                          (not (null? updated-type)))
+                                  (set-alt-list! (var-type v) updated-type)
+                                  (k loop))))))
+                    variables)
+                   (lambda () #f)))))
                (deep-map (lambda (a) (and (symbol? a) (find-if (lambda (v) (equal? (var-name v) a)) variables)))
                          (lambda (a) (find-if (lambda (v) (equal? (var-name v) a)) variables))
                          expr))))
@@ -312,6 +332,11 @@
                       (var-name v) v)))
    variables)
   ;; debugging
-  (pp (list expr variables bindings mapping builtins constraints))(newline)
-  (list (specialize expr mapping builtins #t)
+  (when debugging (pp (list expr variables bindings mapping builtins constraints))(newline))
+  (list (specialize-expression expr mapping builtins #t)
+        variables
+        mapping
         (var-type (find (lambda (v) (equal? (var-name v) 'return-type)) variables)))))
+
+(define (specialize expr return-type bindings builtins #!optional (debugging #f))
+ (first (type-inference expr return-type bindings builtins debugging)))
