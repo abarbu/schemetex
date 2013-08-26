@@ -548,7 +548,7 @@
 ;; operators, it has a list of arguments which for uniformity should
 ;; be wrapped in an mrow allowing juxtaposition to work correctly
 (define r:msqrt
- `((("msqrt" ... args) ('sqrt ("mrow" args))) single))
+ `((("msqrt" ... args) ('r-sqrt ("mrow" args))) single))
 
 (define r:juxtaposition-c
  (append
@@ -1013,6 +1013,7 @@
 (op1 tan (tan (n -> n)))
 
 (op1 exp (exp (n -> n)))
+(op1 sqrt (sqrt (n -> n)))
 
 (op2 +
      (+   (n -> n -> n))

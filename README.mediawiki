@@ -31,9 +31,27 @@ operate over various types, the idea being that you should be able to
 pass in input (numbers, lists, vectors, matrices) that is reasonable
 given the equation and get the right answer. This means that the
 generated code is slower than code written by hand because of all of
-the type checks. One day this egg will do type inference to produce
-better code. For longer equations you'll likely want to specify the
-arugment order:
+the type checks.
+
+To get code that's as good as we would write by hand schemetex has to
+do a bit of type inference, which you enable by using the ''tex*''
+version of the macro:
+
+  (tex* #@"$\frac{1}{\sqrt{(2\pi)\sigma}}e^{-\frac{1}{2}\frac{x-\mu}{\sigma}}$")
+
+This will compile to
+
+  (lambda (x mu sigma)
+    (/ (exp (- (/ (/ (- x mu) sigma) 2)))
+       (sqrt (* (* 2 pi) sigma))))
+
+which is pretty much what you would write by hand. Sometimes type
+inference can't determine the type of a variable from the
+equation. For these cases you can specify the return type of the
+equation as well as the types of the variables. See the typed
+interface section at the bottom for details.
+
+For longer equations you'll likely want to specify the arugment order:
 
   (tex #@"$f(x,y)=\sum_x\{x^2+y^3\}$")
 
@@ -41,12 +59,19 @@ The ''f'' is entirely ignored, but one day this syntax will allow for
 recursive and mutually recursive functions. For even more interesting
 equations you can use
 
-: (tex-let ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
-: (tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
+  (tex-let ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
 
-which allow you to bind variables which ends up being much cleaner.
+or
+
+  (tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
+
+which allow you to bind variables which ends up being much
+cleaner. The former produces a function while the latter produces a
+value.
 
 === Interface ===
+
+==== Untyped ====
 
 : (tex #@"$TeX$")
 
@@ -60,7 +85,7 @@ Binds ''x'' and produces a function with one argument ''y'' because
 ''y'' is unbound. If you want to produce a value instead of a function
 see ''tex-let/value''.
 
-:(tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
+: (tex-let/value ((x '(1 2 3))) #@"$\sum_x\{x^2+y^3\}$")
 
 Expands to code which produces a value instead of a function. Note
 that ''y'' here is unbound and will be captured from the enclosing
@@ -70,6 +95,40 @@ scope.
 
 This will return the code produced for a particular TeX
 equation. 
+
+==== Typed ====
+
+One day all macros from the untyped section will typed ''tex*''
+versions.
+
+The type system is intentionally pretty simple and intended to allow
+heterogenous collections. There are a only a small number of builtin types:
+
+  n         inexact
+  i         exact
+  l         list
+  v         vector
+  m         matrix
+  (-> a b)  function from type a to type b
+
+For the moment you can't specify the types contained within matrices,
+lists, or vectors but these can generally be inferred from the context
+of the equation.
+
+: (tex* #@"$TeX$")
+: (tex* return-type #@"$TeX$")
+: (tex* return-type variable-type-alist #@"$TeX$")
+: (tex* return-type variable-type-alist #@"$TeX$" debugging?)
+
+Like ''tex'' this produces a function. You can specify the type of any
+subset of variables. Pass ''#t'' to ''debugging?'' to see the inferred
+types. This is a bit difficult to read for now.
+
+For example
+
+  (tex* n ((f . (-> v (-> n n)))) #@"$f(x,2)$" #t)
+
+will infer that ''x'' is a vector.
 
 === License ===
 

@@ -1,4 +1,10 @@
-(use schemetex)
+(module schemetex-type-inference *
+(import chicken scheme srfi-1 extras data-structures ports files foreign)
+(begin-for-syntax (require 'traversal))
+(import-for-syntax traversal)
+(use traversal nondeterminism define-structure linear-algebra irregex AD
+     srfi-13 srfi-69 shell ssax scheme2c-compatibility nlopt
+     schemetex-compiler miscmacros)
 
 (define (split-between-every p l)
  (let loop ((l l) (r '(())))
@@ -18,11 +24,6 @@
        (foldr (lambda (a b) `(-> ,a ,b)) (last t) (but-last t))))
      type))
 
-(define (deep-map p f tree)
- (cond ((p tree) (f tree))
-       ((list? tree) (map (lambda (subtree) (deep-map p f subtree)) tree))
-       (else tree)))
-
 ;; n inexact
 ;; i exact
 ;; l list
@@ -32,86 +33,87 @@
 (define-structure var name type)
 (define-structure alt list)
 
-(define op1 '((bar
-          (abs           (n -> n))
-          (length        (l -> n))
-          (vector-length (v -> n))
-          (determinant   (m -> n)))
-         (double-bar
-          (magnitude (v -> n)))
-         (neg
-          (-     (n -> n))
-          (v-neg (v -> v))
-          (m-neg (m -> m)))
-         (transpose
-          (v-transpose      (v -> cv))
-          (v-transpose      (cv -> v))
-          (matrix-transpose (m -> m)))
-         (log (log (n -> n)))
-         (lg  (log (n -> n)))
-         (ln  (log (n -> n)))
-         (sin (sin (n -> n)))
-         (cos (cos (n -> n)))
-         (tan (tan (n -> n)))
-         (exp (exp (n -> n)))
-         (range (range (n -> n -> l)))))
-(define op2 '((+
-          (+   (n -> n -> n))
-          (v+  (v -> v -> v))
-          (cv+ (cv -> cv -> cv))
-          (m+  (m -> m -> m)))
-         (-
-          (-   (n -> n -> n))
-          (v-  (v -> v -> v))
-          (cv- (cv -> cv -> cv))
-          (m-  (m -> m -> m)))
-         (*
-          (*            (n -> n -> n))
-          (k*v          (n -> v -> v))
-          ((flip2 k*v)  (v -> n -> v))
-          (k*cv         (n -> cv -> cv))
-          ((flip2 k*cv) (cv -> n -> cv))
-          (v*cv         (v -> cv -> m))
-          (cv*v         (cv -> v -> m))
-          (m*           (m -> m -> m))
-          (m*v-new      (m -> v -> cv))
-          (cv*m         (cv -> m -> v))
-          (k*m          (n -> m -> m))
-          ((flip2 k*m)  (m -> n -> m)))
-         (/
-          (/    (n -> n -> n))
-          (m/   (m -> m -> m))
-          (m/k  (m -> n -> m))
-          (v/k  (v -> n -> v))
-          (cv/k (cv -> n -> cv)))
-         (expt
-          (expt   (n -> n -> n))
-          (v-expt (v -> n -> v))
-          (m-expt (m -> n -> m)))
-         (ref
-          (list-ref      (l -> n -> star))
-          (vector-ref    (v -> n -> star))
-          (cv-vector-ref (cv -> n -> star))
-          (vector-ref    (m -> n -> v))
-          (v-matrix-ref  (m -> v -> star)))
-         (sum
-          (sum-n (n -> (n -> n) -> n))
-          (sum-l (l -> (n -> n) -> n))
-          (sum-v (v -> (n -> n) -> n)))
-         (product
-          (product-n (n -> (n -> n) -> n))
-          (product-l (l -> (n -> n) -> n))
-          (product-v (v -> (n -> n) -> n)))
-         (= (= (n -> n -> b)))
-         (> (> (n -> n -> b)))
-         (< (< (n -> n -> b)))
-         (>= (>= (n -> n -> b)))
-         (<= (<= (n -> n -> b)))))
+(define op1-types '((bar
+                (abs           (n -> n))
+                (length        (l -> n))
+                (vector-length (v -> n))
+                (determinant   (m -> n)))
+               (double-bar
+                (magnitude (v -> n)))
+               (neg
+                (-     (n -> n))
+                (v-neg (v -> v))
+                (m-neg (m -> m)))
+               (transpose
+                (v-transpose      (v -> cv))
+                (v-transpose      (cv -> v))
+                (matrix-transpose (m -> m)))
+               (log (log (n -> n)))
+               (lg  (log (n -> n)))
+               (ln  (log (n -> n)))
+               (sin (sin (n -> n)))
+               (cos (cos (n -> n)))
+               (tan (tan (n -> n)))
+               (exp (exp (n -> n)))
+               (sqrt (sqrt (n -> n)))
+               (range (range (n -> n -> l)))))
+(define op2-types '((+
+                (+   (n -> n -> n))
+                (v+  (v -> v -> v))
+                (cv+ (cv -> cv -> cv))
+                (m+  (m -> m -> m)))
+               (-
+                (-   (n -> n -> n))
+                (v-  (v -> v -> v))
+                (cv- (cv -> cv -> cv))
+                (m-  (m -> m -> m)))
+               (*
+                (*            (n -> n -> n))
+                (k*v          (n -> v -> v))
+                ((flip2 k*v)  (v -> n -> v))
+                (k*cv         (n -> cv -> cv))
+                ((flip2 k*cv) (cv -> n -> cv))
+                (v*cv         (v -> cv -> m))
+                (cv*v         (cv -> v -> m))
+                (m*           (m -> m -> m))
+                (m*v-new      (m -> v -> cv))
+                (cv*m         (cv -> m -> v))
+                (k*m          (n -> m -> m))
+                ((flip2 k*m)  (m -> n -> m)))
+               (/
+                (/    (n -> n -> n))
+                (m/   (m -> m -> m))
+                (m/k  (m -> n -> m))
+                (v/k  (v -> n -> v))
+                (cv/k (cv -> n -> cv)))
+               (expt
+                (expt   (n -> n -> n))
+                (v-expt (v -> n -> v))
+                (m-expt (m -> n -> m)))
+               (ref
+                (list-ref      (l -> n -> star))
+                (vector-ref    (v -> n -> star))
+                (cv-vector-ref (cv -> n -> star))
+                (vector-ref    (m -> n -> v))
+                (v-matrix-ref  (m -> v -> star)))
+               (sum
+                (sum-n (n -> (n -> n) -> n))
+                (sum-l (l -> (n -> n) -> n))
+                (sum-v (v -> (n -> n) -> n)))
+               (product
+                (product-n (n -> (n -> n) -> n))
+                (product-l (l -> (n -> n) -> n))
+                (product-v (v -> (n -> n) -> n)))
+               (= (= (n -> n -> b)))
+               (> (> (n -> n -> b)))
+               (< (< (n -> n -> b)))
+               (>= (>= (n -> n -> b)))
+               (<= (<= (n -> n -> b)))))
 
 (define builtins (map (lambda (op) (list (string->symbol (string-append "r-" (symbol->string (first op))))
                                (make-alt (map (o type->prefix second) (cdr op)))
                                (map first (cdr op))))
-                 (append op1 op2)))
+                 (append op1-types op2-types)))
 
 (define (generate-constraints expr return-type bindings)
  ;; ground vs generic types
@@ -219,7 +221,7 @@
     (types (map second r)))
   (list (map (lambda (l) (make-var (var-name (car l))
                               (make-alt (remove-duplicatese (map var-type l)))))
-             (group-by var-name (join vars)))
+             (group-by var-name (join vars '())))
         (remove-duplicatese types))))
 
 (define (unify? a b) (not (equal? (unify-types a b) '(() ()))))
@@ -281,9 +283,6 @@
                 (var-name v)))
            expr))
 
-(define (tex->code tex)
- (ast-variables->symbols (expression-body (mathml->expression (tex->mathml tex)))))
-
 (define (type-inference expr return-type bindings builtins #!optional (debugging #f))
  (let* ((a (polymorphic-types expr builtins))
         (variables (append bindings (first a)))
@@ -340,3 +339,4 @@
 
 (define (specialize expr return-type bindings builtins #!optional (debugging #f))
  (first (type-inference expr return-type bindings builtins debugging)))
+)
