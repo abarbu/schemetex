@@ -752,7 +752,7 @@
 ;; TODO Technically these can't appear at the toplevel, only as part of substacks
 (define r:sequence-constraint
  `(((op @ ("sum" "product") ("mrow" var ("mo" c @ ("lt" "gt" "leq" "GreaterEqual" "NotEqual")) i) top ... in)
-    ('if var ("mo" c) i
+    ('if ("mrow" var ("mo" c) i)
          in
          op ! ,(lambda (binder)
                 (cond ((equal? binder "sum") 0)
@@ -764,6 +764,17 @@
 (define r:sequence-empty
  `(((op @ ("sum" "product") ("mtable") top ... in)
     ("mrow" in))
+   single))
+
+;; TODO Technically these can't appear at the toplevel, only as the remnants of substacks
+(define r:sequence-constraint-call
+ `(((op @ ("sum" "product") ("mrow" ("call" ... c)) top ... in)
+    ('if ("call" c)
+         in
+         op ! ,(lambda (binder)
+                (cond ((equal? binder "sum") 0)
+                      ((equal? binder "product") 1)
+                      (else (error "fuck-up"))))))
    single))
 
 (define r:sequence-map
@@ -853,6 +864,7 @@
            ,r:sequence-range
            ,r:sequence-map
            ,r:sequence-constraint
+           ,r:sequence-constraint-call
            ,r:sequence-empty
            ,r:juxtaposition-c
            ,r:matrix
