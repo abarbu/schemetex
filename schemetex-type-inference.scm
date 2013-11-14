@@ -105,15 +105,18 @@
                 (product-l (l -> (n -> n) -> n))
                 (product-v (v -> (n -> n) -> n)))
                (= (= (n -> n -> b)))
+               (not-= (not-= (n -> n -> b)))
                (> (> (n -> n -> b)))
                (< (< (n -> n -> b)))
                (>= (>= (n -> n -> b)))
                (<= (<= (n -> n -> b)))))
 
-(define builtins (map (lambda (op) (list (string->symbol (string-append "r-" (symbol->string (first op))))
-                               (make-alt (map (o type->prefix second) (cdr op)))
-                               (map first (cdr op))))
-                 (append op1-types op2-types)))
+(define builtins (cons
+             `(if #,(alt ((-> b (-> star star)))) (if))
+             (map (lambda (op) (list (string->symbol (string-append "r-" (symbol->string (first op))))
+                                (make-alt (map (o type->prefix second) (cdr op)))
+                                (map first (cdr op))))
+                  (append op1-types op2-types))))
 
 (define (generate-constraints expr return-type bindings)
  ;; ground vs generic types
