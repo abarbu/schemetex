@@ -23,6 +23,8 @@
        ((list? tree) (map (lambda (subtree) (deep-map p f subtree)) tree))
        (else tree)))
 
+(define (not-= a b) (not (= a b)))
+
 ;;; Real literals
 
 (set-sharp-read-syntax! 
@@ -305,36 +307,6 @@
      (match-replace-staging (cdr rules) (match-replace (car rules) tree))))
 
 ;;; TeX
-
-;; TODO namespace for functions might be different from that of values
-;; TODO auto-ranged sigma if the subscript is a number
-;; TODO tex->local-context would also be useful
-;; TODO If sum is just given a number, it should range from 1..c
-;; TODO automatic specialization for fast code
-;; TODO T for transpose
-
-;; TODO min_x max_x argmin_x argmax_x
-;; TODO min max lists/vectors/multi-args
-
-;; Broken:
-
-;; (define *sxml* (tex->mathml #@"$x(y+2)$"))
-;; (pp (mathml->expression *sxml*))
-;; So there's a question, is X a function or is this multiplication?
-;; Right now:
-;; λ> (pp (tex->lambda #@"$x(y+2)$"))
-;; (lambda (x y) (x (r-+ y 2)))
-;; λ> (pp (tex->lambda #@"$(x)(y+2)$"))
-;; (lambda (x y) (r-* x (r-+ y 2)))
-;; which is suboptimal to say the least
-;; I should reject this as ambiguous and ask for some type information
-;; For now the blanket rule is, put bracketed expressions first
-;;  or don't bracket with ()
-
-;; x(y) vs x(y,z)
-;; maybe I need a r-*f for these cases and let it resolve at runtime
-;; So I need to distinguish
-;; xy, x*y vs x(y)
 
 (define-structure expression name arguments body)
 
@@ -731,13 +703,17 @@
 
 ;; subscript: f_y(x)
 (define r:call-sub
- (map (lambda (exp)
-       (if (list? exp)
-           (let ((s (gensym "s")))
-            (list (list-update (first exp) 3 (lambda (l) (list "msub" l '... s)))
-                  (list-update (second exp) 1 (lambda (l) (list "msub" l s)))))
-           exp))
-      (append r:call r:call-sup)))
+ (join
+  (map (lambda (exp)
+        (if (list? exp)
+            (let ((s (gensym "s")))
+             (list
+              (list (list-update (first exp) 2 (lambda (l) `("msub" ,l ("mrow" ... ,s))))
+                    (list-update (second exp) 1 (lambda (l) (list-update l 1 (lambda (l) `("mrow" ,l ("(" ,s)))))))
+              (list (list-update (first exp) 2 (lambda (l) `("msub" ,l ,s)))
+                    (list-update (second exp) 1 (lambda (l) (list-update l 1 (lambda (l) `("mrow" ,l ("(" ,s)))))))))
+            (list exp)))
+       r:call)))
 
 (define r:call=
  `(((... pre ("call" ("mi" f) ... args) ("mo" "=") ... post)
@@ -759,7 +735,7 @@
  `((("msub" var sub)
     ('r-ref var sub))))
 
-(define r:range
+(define r:sequence-range
  `(((op @ ("sum" "product") ("mrow" ("mi" var) ("mo" "=") i) top ... in)
     (op ! ,(lambda (binder)
             (cond ((equal? binder "sum") 'r-sum)
@@ -768,7 +744,29 @@
         ('r-range i top) ('lambda (("mi" var)) in)))
    single))
 
-(define r:map
+(define r:sequence-substack
+ `(((op @ ("sum" "product") ("mtable" ("mtr" ("mtd" ... bottom)) ... rest) top ... in)
+    (op ("mrow" bottom) top
+        (op ("mtable" rest) top in)))))
+
+;; TODO Technically these can't appear at the toplevel, only as part of substacks
+(define r:sequence-constraint
+ `(((op @ ("sum" "product") ("mrow" var ("mo" c @ ("lt" "gt" "leq" "GreaterEqual" "NotEqual")) i) top ... in)
+    ('if var ("mo" c) i
+         in
+         op ! ,(lambda (binder)
+                (cond ((equal? binder "sum") 0)
+                      ((equal? binder "product") 1)
+                      (else (error "fuck-up"))))))
+   single))
+
+;; TODO Technically these can't appear at the toplevel, only as the remnants of substacks
+(define r:sequence-empty
+ `(((op @ ("sum" "product") ("mtable") top ... in)
+    ("mrow" in))
+   single))
+
+(define r:sequence-map
  `(((op @ ("sum" "product") ("mi" var) ... in)
     (op ! ,(lambda (binder)
             (cond ((equal? binder "sum") 'r-sum)
@@ -781,6 +779,8 @@
 (define r:boolean
  `(((... a b ("mo" "=") c ... d)
     (a ('r-= b c) d))
+   ((... a b ("mo" "NotEqual") c ... d)
+    (a ('r-not-= b c) d))
    ((... a b ("mo" "lt") c ... d)
     (a ('r-< b c) d))
    ((... a b ("mo" "gt") c ... d)
@@ -813,7 +813,15 @@
         var
         ('lambda (var) in)))))
 
-(define (mathml->expression mathml #!optional (bare? #f))
+(define r:max/min-op
+ `((("mo" op @ ("max" "min"))
+    ("mi" op ! ,(lambda (s) (conc "r-" s))))))
+
+(define r:equiv-mod
+ `((("mrow" ... a ("mo" "Congruent") ... b ("(" ("mo" "mod") ... c))
+    ('r-= ('r-mod ("mrow" a) ("mrow" c)) ('r-mod ("mrow" b) ("mrow" c))))))
+
+(define (mathml->expression mathml #!optional (bare? #f) (after? #t))
  (let*
    ((before
      `(,r:hat
@@ -828,29 +836,38 @@
        ,r:sum/prod-4
        ,r:unary-1
        ,r:unary-2
+       ,r:max/min-op
        ,r:call
        ,r:call-sup
        ,r:call-sub
+       ,r:call
+       ,r:equiv-mod
+       ;; FIXME This seems like a bad idea with the new setup
        ,r:call=
        ,r:single-mrow/bracket))
     (after
-     `(,r:subsup
-       ,r:msqrt
-       ,r:range
-       ,r:map
-       ,r:juxtaposition-c
-       ,r:matrix
-       ,r:arithmetic
-       ,r:boolean
-       ,r:piecewise-2
-       ,r:exp
-       ,r:numbers
-       ,r:max/min
-       ,r:single-mrow/bracket
-       ,r:stability
-       ,r:calls
-       ,r:subscript-ref-1
-       ,r:subscript-ref-2))
+     (if after?
+         `(,r:subsup
+           ,r:msqrt
+           ,r:sequence-substack
+           ,r:sequence-range
+           ,r:sequence-map
+           ,r:sequence-constraint
+           ,r:sequence-empty
+           ,r:juxtaposition-c
+           ,r:matrix
+           ,r:arithmetic
+           ,r:boolean
+           ,r:piecewise-2
+           ,r:exp
+           ,r:numbers
+           ,r:max/min
+           ,r:single-mrow/bracket
+           ,r:stability
+           ,r:calls
+           ,r:subscript-ref-1
+           ,r:subscript-ref-2)
+         '()))
     (tree (match-replace-staging 
            before
            (number-all-brackets (match-replace-staging  
@@ -896,8 +913,8 @@
 
 (define (range m n)
  (if (< n m)
-     (reverse (map-m-n identity n (- m 1)))
-     (map-m-n identity m (- n 1))))
+     (reverse (map-m-n identity n m))
+     (map-m-n identity m n)))
 
 (define (v-transpose v)
  (if (column-vector? v)
@@ -1063,6 +1080,7 @@
      (product-l (l -> p -> n))
      (product-v (v -> p -> n)))
 (op2 = (= (n -> n -> b)))
+(op2 not-= (not-= (n -> n -> b)))
 (op2 > (> (n -> n -> b)))
 (op2 < (< (n -> n -> b)))
 (op2 >= (>= (n -> n -> b)))
