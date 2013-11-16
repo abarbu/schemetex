@@ -832,6 +832,22 @@
  `((("mrow" ... a ("mo" "Congruent") ... b ("(" ("mo" "mod") ... c))
     ('r-= ('r-mod ("mrow" a) ("mrow" c)) ('r-mod ("mrow" b) ("mrow" c))))))
 
+(define r:conditional-probability
+ (let ((conditional-mrow
+        (lambda (l)
+         (map (lambda (e) (if (and (list? e) (equal? (car e) "mrow"))
+                         (cons "conditional-mrow" (cdr e))
+                         e))
+              l))))
+  `((("call" f ... args ("mrow" ... arg ("mo" "|" 0) ... cond) ... conds)
+     (("mi" "conditional") f
+      ('list args ! ,conditional-mrow ("conditional-mrow" arg))
+      ('list ("conditional-mrow" cond) conds ! ,conditional-mrow)))
+    (("conditional-mrow" ... a ("mo" "=") ... b)
+     (("mi" "probability-equal") ("mrow" a) ("mrow" b)))
+    (("conditional-mrow" ... a)
+     ("mrow" a)))))
+
 (define (mathml->expression mathml #!optional (bare? #f) (after? #t))
  (let*
    ((before
@@ -854,11 +870,12 @@
        ,r:call
        ,r:equiv-mod
        ;; FIXME This seems like a bad idea with the new setup
-       ,r:call=
-       ,r:single-mrow/bracket))
+       ,r:call=))
     (after
      (if after?
-         `(,r:subsup
+         `(,r:single-mrow/bracket
+           ,r:conditional-probability
+           ,r:subsup
            ,r:msqrt
            ,r:sequence-substack
            ,r:sequence-range
