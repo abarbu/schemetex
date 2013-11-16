@@ -112,7 +112,7 @@
                (<= (<= (n -> n -> b)))))
 
 (define builtins (cons
-             `(if #,(alt ((-> b (-> star star)))) (if))
+             `(if ,(make-alt `((-> b (-> star star)))) (if))
              (map (lambda (op) (list (string->symbol (string-append "r-" (symbol->string (first op))))
                                 (make-alt (map (o type->prefix second) (cdr op)))
                                 (map first (cdr op))))
